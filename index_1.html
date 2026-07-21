@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Controle de Empréstimos</title>
+<style>
+  :root{
+    --verde-950:#0E2E21;
+    --verde-900:#123B2A;
+    --verde-700:#1E6B44;
+    --verde-600:#1F7A4D;
+    --verde-100:#DFF0E6;
+    --papel:#F6F7F3;
+    --branco:#FFFFFF;
+    --tinta:#1C2420;
+    --tinta-2:#5A665F;
+    --linha:#E3E7E1;
+    --vermelho:#B3402E;
+    --vermelho-bg:#F9E9E5;
+    --ambar:#8F6400;
+    --ambar-bg:#F7EFD8;
+    --raio:12px;
+    --sombra:0 1px 3px rgba(18,59,42,.10), 0 4px 14px rgba(18,59,42,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--papel); color:var(--tinta); font-size:16px; line-height:1.45;
+  }
+  .num{font-variant-numeric:tabular-nums; letter-spacing:-0.01em}
+
+  /* ---------- login ---------- */
+  #telaLogin{
+    position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(160deg,var(--verde-950),var(--verde-700)); padding:20px;
+  }
+  .cartaoLogin{background:var(--branco); border-radius:16px; padding:32px 26px; width:100%; max-width:360px; box-shadow:var(--sombra)}
+  .cartaoLogin h1{font-size:22px; color:var(--verde-900); margin-bottom:4px}
+  .cartaoLogin p{color:var(--tinta-2); font-size:14px; margin-bottom:20px}
+  .cartaoLogin input{width:100%}
+  .cartaoLogin button{width:100%; margin-top:12px}
+
+  /* ---------- estrutura ---------- */
+  #app{display:none; min-height:100vh}
+  #app.logado{display:flex}
+  aside{
+    width:216px; flex-shrink:0; background:var(--verde-950); color:#CFE3D7;
+    display:flex; flex-direction:column; padding:14px 10px calc(14px + env(safe-area-inset-bottom));
+    transition:margin-left .2s ease; z-index:40;
+  }
+  aside .marca{color:#fff; font-weight:700; font-size:17px; padding:8px 10px 16px; letter-spacing:.2px}
+  aside .marca small{display:block; font-weight:400; font-size:12px; color:#8FB8A3}
+  .navBtn{
+    display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    background:none; border:0; color:inherit; font-size:15px; padding:12px 10px; min-height:44px;
+    border-radius:10px; cursor:pointer;
+  }
+  .navBtn:hover{background:rgba(255,255,255,.08)}
+  .navBtn.ativo{background:var(--verde-600); color:#fff; font-weight:600}
+  main{flex:1; min-width:0; padding:16px clamp(14px,3vw,32px) calc(90px + env(safe-area-inset-bottom))}
+  .topo{display:flex; align-items:center; gap:10px; margin-bottom:14px}
+  .topo h2{font-size:20px; color:var(--verde-900); flex:1}
+  #btnMenu{
+    background:var(--branco); border:1px solid var(--linha); border-radius:10px;
+    min-width:44px; min-height:44px; font-size:18px; cursor:pointer; color:var(--verde-900);
+  }
+  body.menuFechado aside{margin-left:-216px}
+  @media (max-width:760px){
+    aside{position:fixed; inset:0 auto 0 0; box-shadow:0 0 40px rgba(0,0,0,.35)}
+    body:not(.menuFechado) #fundoMenu{position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:30}
+  }
+
+  /* ---------- componentes ---------- */
+  .cartao{background:var(--branco); border:1px solid var(--linha); border-radius:var(--raio); box-shadow:var(--sombra); padding:16px; margin-bottom:14px}
+  .grade{display:grid; gap:12px}
+  .grade.kpis{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+  .kpi{padding:14px 16px}
+  .kpi .rotulo{font-size:12.5px; color:var(--tinta-2); text-transform:uppercase; letter-spacing:.06em}
+  .kpi .valor{font-size:24px; font-weight:700; color:var(--verde-900); margin-top:2px}
+  .kpi.neg .valor{color:var(--vermelho)}
+  button.primario, button.perigo, button.suave{
+    border:0; border-radius:10px; min-height:44px; padding:0 18px; font-size:15px; font-weight:600; cursor:pointer;
+  }
+  button.primario{background:var(--verde-600); color:#fff}
+  button.primario:hover{background:var(--verde-700)}
+  button.perigo{background:var(--vermelho-bg); color:var(--vermelho)}
+  button.suave{background:var(--verde-100); color:var(--verde-900)}
+  input,select,textarea{
+    font:inherit; font-size:16px; padding:10px 12px; border:1px solid var(--linha); border-radius:10px;
+    background:var(--branco); color:var(--tinta); width:100%;
+  }
+  input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--verde-600); outline-offset:1px}
+  label{display:block; font-size:13.5px; font-weight:600; color:var(--tinta-2); margin:12px 0 5px}
+  .duasCol{display:grid; grid-template-columns:1fr 1fr; gap:0 12px}
+  @media (max-width:480px){.duasCol{grid-template-columns:1fr}}
+
+  table{width:100%; border-collapse:collapse; font-size:14.5px}
+  th{font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--tinta-2); text-align:left; padding:8px 10px; border-bottom:1px solid var(--linha)}
+  td{padding:11px 10px; border-bottom:1px solid var(--linha); vertical-align:middle}
+  tr.linhaClicavel{cursor:pointer}
+  tr.linhaClicavel:hover{background:#F0F4EF}
+  td.dir,th.dir{text-align:right}
+
+  .chip{display:inline-block; font-size:12.5px; font-weight:700; padding:3px 10px; border-radius:999px; white-space:nowrap}
+  .chip.aberto{background:var(--verde-100); color:var(--verde-700)}
+  .chip.atrasado{background:var(--vermelho-bg); color:var(--vermelho)}
+  .chip.quitado{background:#E8E8EC; color:#4B4B57}
+
+  .vazio{color:var(--tinta-2); font-size:14.5px; padding:18px 4px; text-align:center}
+  .barraAcoes{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px}
+  .buscaLista{position:relative}
+  .buscaLista .opcoes{
+    position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:20;
+    background:var(--branco); border:1px solid var(--linha); border-radius:10px; box-shadow:var(--sombra);
+    max-height:220px; overflow:auto; display:none;
+  }
+  .buscaLista .opcoes div{padding:11px 12px; cursor:pointer; min-height:44px; display:flex; align-items:center}
+  .buscaLista .opcoes div:hover{background:var(--verde-100)}
+
+  /* ---------- calendário ---------- */
+  .calTopo{display:flex; align-items:center; gap:8px; margin-bottom:12px}
+  .calTopo h3{flex:1; text-align:center; font-size:17px; color:var(--verde-900); text-transform:capitalize}
+  .calTopo button{background:var(--branco); border:1px solid var(--linha); border-radius:10px; min-width:44px; min-height:44px; font-size:16px; cursor:pointer; color:var(--verde-900); font-weight:600}
+  .calTopo button.hoje{padding:0 14px; font-size:14px}
+  .calSemana{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:4px}
+  .calSemana div{text-align:center; font-size:11px; font-weight:700; color:var(--tinta-2); text-transform:uppercase; letter-spacing:.05em; padding:4px 0}
+  .calGrade{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
+  .calDia{
+    background:var(--branco); border:1px solid var(--linha); border-radius:10px; min-height:78px;
+    padding:5px 4px; font-size:12px; cursor:pointer; overflow:hidden; display:flex; flex-direction:column; gap:2px;
+  }
+  .calDia:hover{border-color:var(--verde-600)}
+  .calDia.fora{background:transparent; border-color:transparent; cursor:default; opacity:.35}
+  .calDia .diaNum{font-size:12.5px; font-weight:700; color:var(--tinta-2); width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:50%}
+  .calDia.eHoje{border-color:var(--verde-600); border-width:2px}
+  .calDia.eHoje .diaNum{background:var(--verde-600); color:#fff}
+  .bad{font-size:10.5px; font-weight:700; border-radius:6px; padding:1px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .bad.rec{background:var(--verde-100); color:var(--verde-700)}
+  .bad.prev{background:var(--ambar-bg); color:var(--ambar)}
+  .bad.venc{background:var(--vermelho-bg); color:var(--vermelho)}
+  .bad.paga{background:#EEF0EE; color:#8A948D; text-decoration:line-through}
+  .bad.emp{background:#E8ECF7; color:#3B5398}
+  @media (max-width:520px){ .calDia{min-height:64px; padding:4px 3px} .bad{font-size:9.5px} }
+
+  /* ---------- modal ---------- */
+  #modalFundo{position:fixed; inset:0; background:rgba(14,46,33,.45); z-index:60; display:none; align-items:flex-end; justify-content:center}
+  #modalFundo.aberto{display:flex}
+  #modalCaixa{
+    background:var(--branco); width:100%; max-width:560px; max-height:88vh; overflow:auto;
+    border-radius:16px 16px 0 0; padding:20px 20px calc(24px + env(safe-area-inset-bottom));
+  }
+  @media (min-width:600px){
+    #modalFundo{align-items:center; padding:20px}
+    #modalCaixa{border-radius:16px}
+  }
+  #modalTitulo{font-size:18px; color:var(--verde-900); margin-bottom:6px}
+  .modalBotoes{display:flex; gap:10px; margin-top:20px; flex-wrap:wrap}
+  .modalBotoes button{flex:1; min-width:130px}
+
+  /* ---------- sync + toasts ---------- */
+  #chipSync{
+    position:fixed; right:14px; top:14px; z-index:50; font-size:12.5px; font-weight:600;
+    background:var(--branco); border:1px solid var(--linha); border-radius:999px; padding:6px 12px;
+    box-shadow:var(--sombra); cursor:pointer; color:var(--tinta-2);
+  }
+  #chipSync.erro{color:var(--vermelho); border-color:var(--vermelho)}
+  #chipSync.local{color:var(--ambar); border-color:var(--ambar)}
+  #toasts{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(16px + env(safe-area-inset-bottom)); z-index:70; display:flex; flex-direction:column; gap:8px; width:min(92vw,420px)}
+  .toast{background:var(--verde-950); color:#fff; border-radius:10px; padding:12px 16px; font-size:14.5px; box-shadow:var(--sombra); animation:sobe .18s ease}
+  .toast.erro{background:var(--vermelho)}
+  @keyframes sobe{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important} }
+
+  .listaPag{list-style:none}
+  .listaPag li{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--linha); font-size:14.5px}
+  .listaPag li .cresce{flex:1}
+  .btnMini{background:none; border:0; color:var(--vermelho); font-size:13px; cursor:pointer; padding:8px; min-height:44px}
+  .btnConfirmar{
+    background:var(--verde-600); color:#fff; border:0; border-radius:8px; font-size:12.5px; font-weight:700;
+    padding:8px 10px; cursor:pointer; white-space:nowrap; min-height:36px;
+  }
+  .subTitulo{font-size:15px; font-weight:700; color:var(--verde-900); margin:18px 0 8px}
+  .resumoSaldo{background:var(--verde-950); color:#fff; border-radius:var(--raio); padding:16px 18px; margin-bottom:14px}
+  .resumoSaldo .rotulo{font-size:12.5px; color:#9FC5B1; text-transform:uppercase; letter-spacing:.06em}
+  .resumoSaldo .valor{font-size:30px; font-weight:700; margin-top:2px}
+  .resumoSaldo .miudos{display:flex; gap:18px; margin-top:12px; font-size:13.5px; color:#CFE3D7; flex-wrap:wrap}
+  .caixaGarantia{background:var(--ambar-bg); border-radius:10px; padding:2px 12px 12px; margin-top:6px}
+  .divisor{border:0; border-top:1px solid var(--linha); margin:18px 0 4px}
+  .infoLinha{font-size:14px; color:var(--tinta-2); margin-top:6px}
+</style>
+</head>
+<body class="">
+
+<!-- LOGIN -->
+<div id="telaLogin">
+  <div class="cartaoLogin">
+    <h1>Controle de Empréstimos</h1>
+    <p>Digite a senha para entrar.</p>
+    <input type="password" id="campoSenha" placeholder="Senha" autocomplete="current-password">
+    <button class="primario" id="btnEntrar">Entrar</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div id="fundoMenu"></div>
+  <aside id="menuLateral">
+    <div class="marca">Empréstimos<small id="marcaNome"></small></div>
+    <button class="navBtn" data-aba="dashboard">📊 Painel</button>
+    <button class="navBtn" data-aba="emprestimos">💸 Empréstimos</button>
+    <button class="navBtn" data-aba="calendario">📅 Calendário</button>
+    <button class="navBtn" data-aba="pessoas">👤 Pessoas</button>
+    <button class="navBtn" data-aba="config">⚙️ Configurações</button>
+  </aside>
+
+  <main>
+    <div class="topo">
+      <button id="btnMenu" aria-label="Mostrar ou esconder menu">☰</button>
+      <h2 id="tituloAba">Painel</h2>
+    </div>
+    <div id="conteudo"></div>
+  </main>
+</div>
+
+<button id="chipSync" title="Situação da sincronização">…</button>
+
+<div id="modalFundo">
+  <div id="modalCaixa">
+    <h3 id="modalTitulo"></h3>
+    <div id="modalCorpo"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   CONFIGURAÇÃO — edite estas 2 linhas na instalação
+===================================================================== */
+const API_URL = 'COLE_AQUI_A_URL_DO_APPS_SCRIPT'; // termina em /exec
+const SENHA   = 'mudar123';                        // a MESMA senha do Codigo.gs
+
+/* =====================================================================
+   ESTADO + ARMAZENAMENTO LOCAL
+===================================================================== */
+const CHAVE_ESTADO   = 'emp_estado_v1';
+const CHAVE_PENDENTE = 'emp_pendentes_v1';
+const CHAVE_MENU     = 'emp_menu_fechado';
+
+let estado = { pessoas: [], emprestimos: [], config: { id: 'config', nome: '' } };
+let pendentes = [];
+const filas = {};
+const emVoo = {};
+let temApi = false;
+
+function carregarLocal() {
+  try {
+    const bruto = localStorage.getItem(CHAVE_ESTADO);
+    if (bruto) estado = Object.assign(estado, JSON.parse(bruto));
+    const p = localStorage.getItem(CHAVE_PENDENTE);
+    if (p) pendentes = JSON.parse(p);
+  } catch (e) { console.error('cache local inválido', e); }
+}
+function salvarLocal() {
+  localStorage.setItem(CHAVE_ESTADO, JSON.stringify(estado));
+  localStorage.setItem(CHAVE_PENDENTE, JSON.stringify(pendentes));
+}
+
+/* =====================================================================
+   UTILITÁRIOS
+===================================================================== */
+const fmtBRL = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtCurto = v => { v = Number(v) || 0; return v >= 1000 ? 'R$' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'k' : 'R$' + Math.round(v); };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : n; };
+const definido = v => v !== undefined && v !== null && v !== '';
+const novoId = () => 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function hojeStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function diasEntre(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000); }
+function dataBR(iso) {
+  if (!definido(iso)) return '—';
+  const p = String(iso).slice(0, 10).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+}
+function diaMes(iso) { const p = String(iso).slice(0, 10).split('-'); return p.length === 3 ? p[2] + '/' + p[1] : iso; }
+function mesDe(iso) { const m = parseInt(String(iso).slice(5, 7), 10); return MESES[m - 1] || ''; }
+function somaMeses(iso, n) {
+  const d = new Date(iso + 'T12:00:00');
+  d.setMonth(d.getMonth() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function pessoaPorId(id) { return estado.pessoas.find(p => p.id === id); }
+function nomePessoa(id) { const p = pessoaPorId(id); return p ? p.nome : '(pessoa excluída)'; }
+function ordenarPorNome(lista, campo) {
+  return lista.slice().sort((a, b) => String(a[campo] || '').localeCompare(String(b[campo] || ''), 'pt-BR'));
+}
+function toast(msg, erro) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (erro ? ' erro' : '');
+  t.textContent = msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+/* =====================================================================
+   CÁLCULO DO EMPRÉSTIMO
+   Tipos de juros: 'nenhum' | 'fixo' | 'mensal' | 'atraso'
+   Com parcelas + tipo 'atraso': os juros correm POR PARCELA vencida,
+   sobre o valor que falta dela, pró-rata por dia (mês = 30 dias).
+===================================================================== */
+function ledgerSaldo(principal, taxa, inicio, pags, hoje) {
+  let saldo = principal, juros = 0, marco = inicio;
+  const acumular = ate => {
+    if (saldo <= 0.005) return;
+    const dias = diasEntre(marco, ate);
+    if (dias > 0) { const j = saldo * taxa * (dias / 30); saldo += j; juros += j; }
+  };
+  pags.forEach(p => {
+    if (String(p.data) > marco) { acumular(p.data); marco = p.data; }
+    saldo -= num(p.valor);
+  });
+  if (saldo > 0.005 && hoje > marco) acumular(hoje);
+  return { saldo, juros };
+}
+
+function calcEmprestimo(e) {
+  const principal = num(e.valor);
+  const taxa = num(e.jurosTaxa) / 100;
+  const tipo = e.jurosTipo || 'nenhum';
+  const pags = (e.pagamentos || []).slice().sort((a, b) => String(a.data).localeCompare(String(b.data)));
+  const totalPago = pags.reduce((s, p) => s + num(p.valor), 0);
+  const hoje = hojeStr();
+  const parcelas = Array.isArray(e.parcelas) ? e.parcelas : [];
+  let saldo = 0, juros = 0;
+  const parcInfo = [];
+
+  if (parcelas.length) {
+    let sobra = totalPago;
+    parcelas.forEach(p => {
+      const v = num(p.valor);
+      const pago = Math.min(v, sobra); sobra -= pago;
+      const restante = v - pago;
+      let jAtraso = 0;
+      if (tipo === 'atraso' && restante > 0.005 && String(p.data) < hoje) {
+        jAtraso = restante * taxa * (diasEntre(p.data, hoje) / 30);
+      }
+      parcInfo.push({
+        num: p.num, data: p.data, valor: v, pago, restante, jurosAtraso: jAtraso,
+        jurosInc: num(p.jurosInc || 0),
+        status: restante <= 0.005 ? 'paga' : (String(p.data) < hoje ? 'vencida' : 'a_vencer')
+      });
+    });
+    const somaRest = parcInfo.reduce((s, x) => s + x.restante, 0);
+    const somaJAtraso = parcInfo.reduce((s, x) => s + x.jurosAtraso, 0);
+    const somaJInc = parcInfo.reduce((s, x) => s + x.jurosInc, 0);
+
+    if (tipo === 'mensal') {
+      const r = ledgerSaldo(principal, taxa, e.dataEmprestimo, pags, hoje);
+      saldo = r.saldo; juros = r.juros;
+    } else if (tipo === 'atraso') {
+      saldo = somaRest + somaJAtraso;
+      juros = somaJAtraso + somaJInc;
+    } else {
+      saldo = somaRest;
+      juros = (tipo === 'fixo' ? principal * taxa : 0) + somaJInc;
+    }
+  } else if (tipo === 'fixo') {
+    juros = principal * taxa;
+    saldo = principal + juros - totalPago;
+  } else if (tipo === 'mensal' || tipo === 'atraso') {
+    const inicio = (tipo === 'mensal') ? e.dataEmprestimo : (e.dataVencimento || e.dataEmprestimo);
+    const r = ledgerSaldo(principal, taxa, inicio, pags, hoje);
+    saldo = r.saldo; juros = r.juros;
+  } else {
+    saldo = principal - totalPago;
+  }
+
+  const quitado = saldo <= 0.005;
+  let atrasado = false, diasAtraso = 0;
+  if (!quitado) {
+    const primeiraVencida = parcInfo.find(x => x.status === 'vencida');
+    if (primeiraVencida) { atrasado = true; diasAtraso = diasEntre(primeiraVencida.data, hoje); }
+    else if (!parcelas.length && definido(e.dataVencimento) && hoje > e.dataVencimento) {
+      atrasado = true; diasAtraso = diasEntre(e.dataVencimento, hoje);
+    }
+  }
+
+  const proxParc = parcInfo.find(x => x.restante > 0.005) || null;
+  const proxData = proxParc ? proxParc.data : (!quitado && definido(e.dataVencimento) ? e.dataVencimento : '');
+  const proxValor = proxParc ? proxParc.restante + proxParc.jurosAtraso : (!quitado ? saldo : 0);
+  const fimData = parcelas.length ? parcelas[parcelas.length - 1].data : (definido(e.dataVencimento) ? e.dataVencimento : '');
+
+  return {
+    saldo: Math.max(saldo, 0), juros: Math.max(juros, 0), totalPago,
+    status: quitado ? 'quitado' : (atrasado ? 'atrasado' : 'aberto'),
+    diasAtraso, parcInfo, proxData, proxValor, fimData
+  };
+}
+function statusChip(st) {
+  const txt = { aberto: 'Em dia', atrasado: 'Atrasado', quitado: 'Quitado' }[st] || st;
+  return '<span class="chip ' + st + '">' + txt + '</span>';
+}
+function descJuros(e) {
+  const t = e.jurosTipo || 'nenhum';
+  if (t === 'nenhum') return 'Sem juros';
+  if (t === 'fixo')   return num(e.jurosTaxa) + '% fixo sobre o valor';
+  if (t === 'mensal') return num(e.jurosTaxa) + '% ao mês sobre o saldo';
+  if (t === 'atraso') return num(e.jurosTaxa) + '% ao mês sobre parcela/valor em atraso';
+  return t;
+}
+
+/* =====================================================================
+   MENSAGEM DE COBRANÇA (formato combinado com o dono do sistema)
+===================================================================== */
+function gerarMensagem(e) {
+  const c = calcEmprestimo(e);
+  const p = pessoaPorId(e.pessoaId);
+  const L = [];
+  L.push('👤 ' + (p ? p.nome : nomePessoa(e.pessoaId)));
+  L.push('Dados do empréstimo');
+  L.push('* 💵 Capital emprestado: ' + fmtBRL(e.valor));
+  L.push('* 💰 Total recebido: ' + fmtBRL(c.totalPago));
+  L.push('Situação atual');
+
+  if (c.status === 'quitado') {
+    L.push('* ✅ Empréstimo quitado. Obrigado!');
+    return L.join('\n');
+  }
+
+  const pagas = c.parcInfo.filter(x => x.status === 'paga');
+  if (pagas.length) {
+    L.push('* ✅ Parcelas pagas: ' + pagas.length + ' (' + pagas.map(x => diaMes(x.data)).join(' e ') + ')');
+  }
+
+  const vencidas = c.parcInfo.filter(x => x.status === 'vencida');
+  vencidas.forEach(x => {
+    if (x.pago > 0.005) {
+      L.push('* 💰 Parcela de ' + mesDe(x.data) + ': ' + fmtBRL(x.valor));
+      L.push('* ✅ Recebido: ' + fmtBRL(x.pago));
+      L.push('* ⏳ Restante: ' + fmtBRL(x.restante));
+    } else {
+      L.push('* ❌ Parcela em atraso: ' + diaMes(x.data) + ' (' + fmtBRL(x.restante) + ')');
+    }
+  });
+  const somaJAtraso = c.parcInfo.reduce((s, x) => s + x.jurosAtraso, 0);
+  if (somaJAtraso > 0.005) {
+    L.push('* ⚠️ Juros de atraso até hoje: ' + fmtBRL(somaJAtraso) + ' (' + c.diasAtraso + ' dia(s) de atraso)');
+  }
+
+  const proxAVencer = c.parcInfo.find(x => x.status === 'a_vencer');
+  if (proxAVencer) {
+    L.push('* 📅 Próximo pagamento: ' + diaMes(proxAVencer.data));
+    L.push('* 💲 Valor previsto: ' + fmtBRL(proxAVencer.restante));
+  }
+
+  if (!c.parcInfo.length) {
+    L.push('* 💲 Saldo devedor hoje: ' + fmtBRL(c.saldo));
+    if (definido(e.dataVencimento)) {
+      if (c.status === 'atrasado') L.push('* ⚠️ Vencido desde ' + diaMes(e.dataVencimento) + ' (' + c.diasAtraso + ' dia(s))');
+      else L.push('* 📅 Devolução prevista: ' + diaMes(e.dataVencimento));
+    }
+  } else if (definido(c.fimData)) {
+    L.push('* 📅 Cronograma final previsto para ' + diaMes(c.fimData) + '.');
+  }
+  return L.join('\n');
+}
+
+/* =====================================================================
+   SINCRONIZAÇÃO (UI otimista + fila por tabela + pendências)
+===================================================================== */
+function atualizarChip() {
+  const chip = document.getElementById('chipSync');
+  if (!temApi) { chip.textContent = 'Modo local'; chip.className = 'local'; return; }
+  if (pendentes.length > 0) { chip.textContent = pendentes.length + ' pendente(s)'; chip.className = 'erro'; return; }
+  chip.textContent = 'Sincronizado'; chip.className = '';
+}
+
+async function postApi(payload) {
+  const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ senha: SENHA }, payload)) });
+  const dados = await r.json();
+  if (!dados || dados.ok !== true) throw new Error('servidor recusou: ' + (dados && dados.erro ? dados.erro : 'resposta inválida'));
+  return dados;
+}
+
+function enviar(tabela, acao, payload) {
+  if (!temApi) return;
+  emVoo[tabela] = (emVoo[tabela] || 0) + 1;
+  filas[tabela] = (filas[tabela] || Promise.resolve())
+    .then(() => postApi(Object.assign({ acao, tabela }, payload)))
+    .catch(err => {
+      pendentes.push({ tabela, acao, payload, motivo: String(err && err.message || err), quando: new Date().toLocaleString('pt-BR') });
+      salvarLocal();
+    })
+    .finally(() => { emVoo[tabela]--; atualizarChip(); });
+}
+
+async function reenviarPendentes() {
+  if (!temApi || pendentes.length === 0) return;
+  const fila = pendentes; pendentes = []; salvarLocal(); atualizarChip();
+  for (const item of fila) {
+    try { await postApi(Object.assign({ acao: item.acao, tabela: item.tabela }, item.payload)); }
+    catch (err) {
+      item.motivo = String(err && err.message || err);
+      pendentes.push(item);
+    }
+  }
+  salvarLocal(); atualizarChip();
+}
+
+let erroUltimoPull = false;
+async function puxarTudo(silencioso) {
+  if (!temApi) return;
+  try {
+    const r = await fetch(API_URL + '?acao=ler_tudo&senha=' + encodeURIComponent(SENHA));
+    const dados = await r.json();
+    if (!dados || dados.ok !== true) throw new Error(dados && dados.erro || 'resposta inválida');
+    const temPendencia = t => (emVoo[t] || 0) > 0 || pendentes.some(p => p.tabela === t);
+    if (!temPendencia('Pessoas'))     estado.pessoas = dados.pessoas || [];
+    if (!temPendencia('Emprestimos')) estado.emprestimos = dados.emprestimos || [];
+    if (!temPendencia('Config'))      estado.config = (dados.config && dados.config[0]) || estado.config;
+    salvarLocal(); erroUltimoPull = false;
+    renderizarAbaAtual();
+  } catch (err) {
+    erroUltimoPull = true;
+    if (!silencioso) toast('Sem conexão com a planilha. Trabalhando localmente.', true);
+  }
+  atualizarChip();
+}
+
+function salvarRegistro(tabela, listaCampo, registro) {
+  const lista = estado[listaCampo];
+  const i = lista.findIndex(x => x.id === registro.id);
+  if (i >= 0) lista[i] = Object.assign({}, lista[i], registro); // preserva campos de outras telas
+  else lista.push(registro);
+  salvarLocal(); renderizarAbaAtual();
+  const completo = lista.find(x => x.id === registro.id);
+  enviar(tabela, 'upsert', { registro: completo });
+}
+function excluirRegistroLocal(tabela, listaCampo, id) {
+  estado[listaCampo] = estado[listaCampo].filter(x => x.id !== id);
+  salvarLocal(); renderizarAbaAtual();
+  enviar(tabela, 'excluir', { id });
+}
+function salvarConfig() {
+  salvarLocal(); renderizarAbaAtual();
+  enviar('Config', 'upsert', { registro: estado.config });
+}
+
+/* =====================================================================
+   MODAL + BUSCA DE PESSOA
+===================================================================== */
+function abrirModal(titulo, html) {
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalCorpo').innerHTML = html;
+  document.getElementById('modalFundo').classList.add('aberto');
+}
+function fecharModal() { document.getElementById('modalFundo').classList.remove('aberto'); }
+document.getElementById('modalFundo').addEventListener('click', e => { if (e.target.id === 'modalFundo') fecharModal(); });
+
+function montarBuscaPessoa(idEscolhida) {
+  const p = idEscolhida ? pessoaPorId(idEscolhida) : null;
+  return '<div class="buscaLista">' +
+    '<input type="text" id="buscaPessoa" placeholder="Digite para buscar…" autocomplete="off" value="' + esc(p ? p.nome : '') + '">' +
+    '<input type="hidden" id="pessoaEscolhida" value="' + esc(idEscolhida || '') + '">' +
+    '<div class="opcoes" id="opcoesPessoa"></div></div>';
+}
+function ligarBuscaPessoa() {
+  const campo = document.getElementById('buscaPessoa');
+  const oculto = document.getElementById('pessoaEscolhida');
+  const caixa = document.getElementById('opcoesPessoa');
+  if (!campo) return;
+  const desenhar = filtro => {
+    const lista = ordenarPorNome(estado.pessoas, 'nome')
+      .filter(p => !filtro || p.nome.toLowerCase().includes(filtro.toLowerCase()));
+    caixa.innerHTML = lista.length
+      ? lista.map(p => '<div data-id="' + esc(p.id) + '">' + esc(p.nome) + '</div>').join('')
+      : '<div>Nenhuma pessoa encontrada</div>';
+    caixa.style.display = 'block';
+  };
+  campo.addEventListener('focus', () => desenhar(''));
+  campo.addEventListener('input', () => { oculto.value = ''; desenhar(campo.value); });
+  caixa.addEventListener('mousedown', e => {
+    const alvo = e.target.closest('[data-id]');
+    if (!alvo) return;
+    oculto.value = alvo.dataset.id;
+    campo.value = alvo.textContent;
+    caixa.style.display = 'none';
+  });
+  campo.addEventListener('blur', () => setTimeout(() => { caixa.style.display = 'none'; }, 150));
+}
+
+/* =====================================================================
+   ABAS
+===================================================================== */
+let abaAtual = 'dashboard';
+const TITULOS = { dashboard: 'Painel', emprestimos: 'Empréstimos', calendario: 'Calendário', pessoas: 'Pessoas', config: 'Configurações' };
+
+function irPara(aba) {
+  abaAtual = aba;
+  document.querySelectorAll('.navBtn').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
+  document.getElementById('tituloAba').textContent = TITULOS[aba];
+  if (window.innerWidth <= 760) document.body.classList.add('menuFechado');
+  renderizarAbaAtual();
+}
+function renderizarAbaAtual() {
+  const alvo = document.getElementById('conteudo');
+  if (abaAtual === 'dashboard')   alvo.innerHTML = telaDashboard();
+  if (abaAtual === 'emprestimos') alvo.innerHTML = telaEmprestimos();
+  if (abaAtual === 'calendario')  alvo.innerHTML = telaCalendario();
+  if (abaAtual === 'pessoas')     alvo.innerHTML = telaPessoas();
+  if (abaAtual === 'config')      alvo.innerHTML = telaConfig();
+  document.getElementById('marcaNome').textContent = estado.config.nome || '';
+}
+
+/* ---------- Dashboard ---------- */
+function telaDashboard() {
+  const calc = estado.emprestimos.map(e => ({ e, c: calcEmprestimo(e) }));
+  const tot = fn => calc.reduce((s, x) => s + fn(x), 0);
+  const totalEmprestado = tot(x => num(x.e.valor));
+  const totalRecebido = tot(x => x.c.totalPago);
+  const emAberto = tot(x => x.c.saldo);
+  const jurosAcum = tot(x => x.c.juros);
+  const atrasados = calc.filter(x => x.c.status === 'atrasado').sort((a, b) => b.c.diasAtraso - a.c.diasAtraso);
+  const ultimos = estado.emprestimos.slice()
+    .sort((a, b) => String(b.dataEmprestimo).localeCompare(String(a.dataEmprestimo))).slice(0, 6);
+
+  let html = '<div class="grade kpis">' +
+    kpi('Total emprestado', totalEmprestado) +
+    kpi('Recebido de volta', totalRecebido) +
+    kpi('Em aberto', emAberto, emAberto > 0) +
+    kpi('Juros acumulados', jurosAcum) + '</div>';
+
+  html += '<div class="cartao"><div class="subTitulo" style="margin-top:0">🔴 Atrasados</div>';
+  html += atrasados.length === 0 ? '<div class="vazio">Ninguém está atrasado. 👍</div>'
+    : '<table><thead><tr><th>Pessoa</th><th class="dir">Deve</th><th class="dir">Atraso</th></tr></thead><tbody>' +
+      atrasados.map(x => '<tr class="linhaClicavel" onclick="abrirDetalhe(\'' + x.e.id + '\')"><td>' + esc(nomePessoa(x.e.pessoaId)) + '</td>' +
+        '<td class="dir num"><b>' + fmtBRL(x.c.saldo) + '</b></td><td class="dir">' + (x.c.diasAtraso > 0 ? x.c.diasAtraso + ' dia(s)' : '—') + '</td></tr>').join('') +
+      '</tbody></table>';
+  html += '</div>';
+
+  html += '<div class="cartao"><div class="subTitulo" style="margin-top:0">Últimos empréstimos</div>';
+  html += ultimos.length === 0 ? '<div class="vazio">Nenhum empréstimo ainda. Comece pela aba Empréstimos.</div>'
+    : '<table><thead><tr><th>Pessoa</th><th>Data</th><th class="dir">Valor</th><th></th></tr></thead><tbody>' +
+      ultimos.map(e => { const c = calcEmprestimo(e); return '<tr class="linhaClicavel" onclick="abrirDetalhe(\'' + e.id + '\')"><td>' + esc(nomePessoa(e.pessoaId)) + '</td>' +
+        '<td>' + dataBR(e.dataEmprestimo) + '</td><td class="dir num">' + fmtBRL(e.valor) + '</td><td class="dir">' + statusChip(c.status) + '</td></tr>'; }).join('') +
+      '</tbody></table>';
+  html += '</div>';
+  return html;
+}
+function kpi(rotulo, valor, negativo) {
+  return '<div class="cartao kpi' + (negativo ? ' neg' : '') + '"><div class="rotulo">' + rotulo + '</div><div class="valor num">' + fmtBRL(valor) + '</div></div>';
+}
+
+/* ---------- Calendário ---------- */
+let calAno = new Date().getFullYear();
+let calMes = new Date().getMonth(); // 0-11
+
+function eventosPorDia() {
+  const mapa = {}; // 'YYYY-MM-DD' -> {rec:[], prev:[], emp:[]}
+  const pegar = d => (mapa[d] = mapa[d] || { rec: [], prev: [], emp: [] });
+  estado.emprestimos.forEach(e => {
+    const c = calcEmprestimo(e);
+    (e.pagamentos || []).forEach(p => pegar(String(p.data).slice(0, 10)).rec.push({ e, valor: num(p.valor), obs: p.obs || '' }));
+    if (c.parcInfo.length) {
+      c.parcInfo.forEach(x => pegar(String(x.data).slice(0, 10)).prev.push({ e, valor: x.valor, restante: x.restante, status: x.status, numP: x.num }));
+    } else if (definido(e.dataVencimento)) {
+      pegar(String(e.dataVencimento).slice(0, 10)).prev.push({ e, valor: c.saldo > 0 ? c.saldo : num(e.valor), restante: c.saldo, status: c.status === 'quitado' ? 'paga' : (String(e.dataVencimento) < hojeStr() ? 'vencida' : 'a_vencer'), numP: 0 });
+    }
+    if (definido(e.dataEmprestimo)) pegar(String(e.dataEmprestimo).slice(0, 10)).emp.push({ e, valor: num(e.valor) });
+  });
+  return mapa;
+}
+
+function telaCalendario() {
+  const mapa = eventosPorDia();
+  const hoje = hojeStr();
+  const primeiro = new Date(calAno, calMes, 1);
+  const dow = primeiro.getDay(); // 0=domingo
+  const diasNoMes = new Date(calAno, calMes + 1, 0).getDate();
+
+  let html = '<div class="cartao">';
+  html += '<div class="calTopo">' +
+    '<button onclick="mudarMes(-1)" aria-label="Mês anterior">◀</button>' +
+    '<h3>' + MESES[calMes] + ' de ' + calAno + '</h3>' +
+    '<button class="hoje" onclick="calIrHoje()">Hoje</button>' +
+    '<button onclick="mudarMes(1)" aria-label="Próximo mês">▶</button></div>';
+  html += '<div class="calSemana"><div>dom</div><div>seg</div><div>ter</div><div>qua</div><div>qui</div><div>sex</div><div>sáb</div></div>';
+  html += '<div class="calGrade">';
+  for (let i = 0; i < dow; i++) html += '<div class="calDia fora"></div>';
+  for (let d = 1; d <= diasNoMes; d++) {
+    const iso = calAno + '-' + String(calMes + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    const ev = mapa[iso];
+    const eHoje = iso === hoje;
+    let corpo = '<div class="diaNum">' + d + '</div>';
+    if (ev) {
+      const somaRec = ev.rec.reduce((s, x) => s + x.valor, 0);
+      if (somaRec > 0) corpo += '<div class="bad rec">+' + fmtCurto(somaRec) + '</div>';
+      ev.prev.forEach(x => {
+        const cls = x.status === 'paga' ? 'paga' : (x.status === 'vencida' ? 'venc' : 'prev');
+        corpo += '<div class="bad ' + cls + '">' + fmtCurto(x.status === 'paga' ? x.valor : x.restante) + '</div>';
+      });
+      const somaEmp = ev.emp.reduce((s, x) => s + x.valor, 0);
+      if (somaEmp > 0) corpo += '<div class="bad emp">💸' + fmtCurto(somaEmp) + '</div>';
+    }
+    html += '<div class="calDia' + (eHoje ? ' eHoje' : '') + '" onclick="abrirDia(\'' + iso + '\')">' + corpo + '</div>';
+  }
+  html += '</div>';
+  html += '<p class="infoLinha" style="margin-top:12px">🟩 recebido no dia · 🟨 previsto a receber · 🟥 parcela vencida · <s style="color:#8A948D">riscado</s> = paga · 🟦 💸 empréstimo feito</p>';
+  html += '</div>';
+  return html;
+}
+window.mudarMes = function (n) {
+  calMes += n;
+  if (calMes < 0) { calMes = 11; calAno--; }
+  if (calMes > 11) { calMes = 0; calAno++; }
+  renderizarAbaAtual();
+};
+window.calIrHoje = function () {
+  calAno = new Date().getFullYear(); calMes = new Date().getMonth();
+  renderizarAbaAtual();
+};
+window.abrirDia = function (iso) {
+  const ev = eventosPorDia()[iso];
+  if (!ev) return abrirModal(dataBR(iso), '<div class="vazio">Nada registrado neste dia.</div>');
+  let html = '';
+  if (ev.rec.length) {
+    html += '<div class="subTitulo" style="margin-top:4px">💰 Recebido: ' + fmtBRL(ev.rec.reduce((s, x) => s + x.valor, 0)) + '</div><ul class="listaPag">' +
+      ev.rec.map(x => '<li class="linhaClicavel" onclick="abrirDetalhe(\'' + x.e.id + '\')"><span class="cresce">' + esc(nomePessoa(x.e.pessoaId)) + (x.obs ? ' · ' + esc(x.obs) : '') + '</span><b class="num">' + fmtBRL(x.valor) + '</b></li>').join('') + '</ul>';
+  }
+  if (ev.prev.length) {
+    html += '<div class="subTitulo">📅 Previsto para este dia</div><ul class="listaPag">' +
+      ev.prev.map(x => {
+        const st = x.status === 'paga' ? '<span class="chip quitado">Paga</span>' : (x.status === 'vencida' ? '<span class="chip atrasado">Vencida</span>' : '<span class="chip aberto">A vencer</span>');
+        return '<li class="linhaClicavel" onclick="abrirDetalhe(\'' + x.e.id + '\')"><span class="cresce">' + esc(nomePessoa(x.e.pessoaId)) + (x.numP ? ' · parcela ' + x.numP : ' · devolução') + '</span><b class="num">' + fmtBRL(x.valor) + '</b>' + st + '</li>';
+      }).join('') + '</ul>';
+  }
+  if (ev.emp.length) {
+    html += '<div class="subTitulo">💸 Empréstimos feitos</div><ul class="listaPag">' +
+      ev.emp.map(x => '<li class="linhaClicavel" onclick="abrirDetalhe(\'' + x.e.id + '\')"><span class="cresce">' + esc(nomePessoa(x.e.pessoaId)) + '</span><b class="num">' + fmtBRL(x.valor) + '</b></li>').join('') + '</ul>';
+  }
+  abrirModal(dataBR(iso), html);
+};
+
+/* ---------- Empréstimos ---------- */
+function telaEmprestimos() {
+  const lista = estado.emprestimos.map(e => ({ e, c: calcEmprestimo(e) }));
+  const ordem = { atrasado: 0, aberto: 1, quitado: 2 };
+  lista.sort((a, b) => (ordem[a.c.status] - ordem[b.c.status]) || String(b.e.dataEmprestimo).localeCompare(String(a.e.dataEmprestimo)));
+  let html = '<div class="barraAcoes"><button class="primario" onclick="formEmprestimo()">+ Novo empréstimo</button></div>';
+  html += '<div class="cartao">';
+  html += lista.length === 0 ? '<div class="vazio">Nenhum empréstimo cadastrado.</div>'
+    : '<table><thead><tr><th>Pessoa</th><th class="dir">Emprestado</th><th class="dir">Deve hoje</th><th></th></tr></thead><tbody>' +
+      lista.map(x => '<tr class="linhaClicavel" onclick="abrirDetalhe(\'' + x.e.id + '\')">' +
+        '<td>' + esc(nomePessoa(x.e.pessoaId)) + '<br><small style="color:var(--tinta-2)">' + dataBR(x.e.dataEmprestimo) +
+        (definido(x.c.proxData) && x.c.status !== 'quitado' ? ' · próx. ' + diaMes(x.c.proxData) : '') + '</small></td>' +
+        '<td class="dir num">' + fmtBRL(x.e.valor) + '</td>' +
+        '<td class="dir num"><b>' + fmtBRL(x.c.saldo) + '</b></td>' +
+        '<td class="dir">' + statusChip(x.c.status) + '</td></tr>').join('') +
+      '</tbody></table>';
+  html += '</div>';
+  return html;
+}
+
+window.formEmprestimo = function (id) {
+  const e = id ? estado.emprestimos.find(x => x.id === id) : null;
+  const html =
+    '<label>Quem pegou emprestado</label>' + montarBuscaPessoa(e ? e.pessoaId : '') +
+    '<p style="font-size:13px;color:var(--tinta-2);margin-top:4px">Não achou? Cadastre antes na aba Pessoas.</p>' +
+    '<div class="duasCol">' +
+    '<div><label>Valor emprestado (R$)</label><input id="fValor" type="text" inputmode="decimal" value="' + (e ? esc(e.valor) : '') + '"></div>' +
+    '<div><label>Data do empréstimo</label><input id="fData" type="date" value="' + esc(e ? e.dataEmprestimo : hojeStr()) + '"></div>' +
+    '</div>' +
+    '<label>Data prevista de devolução (opcional)</label><input id="fVenc" type="date" value="' + esc(e && e.dataVencimento || '') + '">' +
+    '<div class="duasCol">' +
+    '<div><label>Tipo de juros</label><select id="fJurosTipo">' +
+      opJuros('nenhum', 'Sem juros', e) + opJuros('fixo', '% fixo sobre o valor', e) +
+      opJuros('mensal', '% ao mês sobre o saldo', e) + opJuros('atraso', '% ao mês só no atraso', e) +
+    '</select></div>' +
+    '<div><label>Taxa (%)</label><input id="fTaxa" type="text" inputmode="decimal" value="' + (e ? esc(e.jurosTaxa || '') : '') + '"></div>' +
+    '</div>' +
+    '<label>Parcelar? (opcional)</label>' +
+    '<div class="duasCol">' +
+    '<div><input id="fNumParc" type="text" inputmode="numeric" placeholder="Nº de parcelas" value="' + (e && e.parcelas ? e.parcelas.length : '') + '"></div>' +
+    '<div><input id="fPrimParc" type="date" title="Data da 1ª parcela" value="' + esc(e && e.parcelas && e.parcelas[0] ? e.parcelas[0].data : '') + '"></div>' +
+    '</div>' +
+    '<p style="font-size:13px;color:var(--tinta-2);margin-top:4px">Se preencher, o sistema gera parcelas mensais iguais a partir da 1ª data.</p>' +
+    '<label>Observações</label><textarea id="fObs" rows="2">' + esc(e && e.obs || '') + '</textarea>' +
+    '<div class="modalBotoes"><button class="suave" onclick="fecharModal()">Cancelar</button>' +
+    '<button class="primario" onclick="gravarEmprestimo(\'' + (e ? e.id : '') + '\')">Salvar empréstimo</button></div>';
+  abrirModal(id ? 'Editar empréstimo' : 'Novo empréstimo', html);
+  ligarBuscaPessoa();
+};
+function opJuros(v, txt, e) {
+  const sel = e && (e.jurosTipo || 'nenhum') === v ? ' selected' : (!e && v === 'nenhum' ? ' selected' : '');
+  return '<option value="' + v + '"' + sel + '>' + txt + '</option>';
+}
+
+window.gravarEmprestimo = function (id) {
+  const pessoaId = document.getElementById('pessoaEscolhida').value;
+  const valor = num(document.getElementById('fValor').value);
+  const data = document.getElementById('fData').value;
+  if (!pessoaId) return toast('Escolha a pessoa (busque e clique no nome).', true);
+  if (valor <= 0) return toast('Informe o valor emprestado.', true);
+  if (!data) return toast('Informe a data do empréstimo.', true);
+
+  const jurosTipo = document.getElementById('fJurosTipo').value;
+  const taxa = num(document.getElementById('fTaxa').value);
+  if (jurosTipo !== 'nenhum' && taxa <= 0) return toast('Informe a taxa de juros (%).', true);
+
+  const reg = {
+    id: id || novoId(),
+    pessoaId, valor, dataEmprestimo: data,
+    dataVencimento: document.getElementById('fVenc').value || '',
+    jurosTipo, jurosTaxa: taxa,
+    obs: document.getElementById('fObs').value.trim()
+  };
+  if (!id) reg.pagamentos = [];
+
+  const nParc = Math.floor(num(document.getElementById('fNumParc').value));
+  const prim = document.getElementById('fPrimParc').value;
+  if (nParc > 0 && prim) {
+    const base = (jurosTipo === 'fixo') ? valor * (1 + taxa / 100) : valor;
+    const vParc = Math.round((base / nParc) * 100) / 100;
+    reg.parcelas = [];
+    for (let i = 0; i < nParc; i++) {
+      const v = (i === nParc - 1) ? Math.round((base - vParc * (nParc - 1)) * 100) / 100 : vParc;
+      reg.parcelas.push({ num: i + 1, data: somaMeses(prim, i), valor: v });
+    }
+    if (!definido(reg.dataVencimento)) reg.dataVencimento = reg.parcelas[nParc - 1].data;
+  } else if (nParc === 0 && id) {
+    reg.parcelas = [];
+  }
+
+  salvarRegistro('Emprestimos', 'emprestimos', reg);
+  fecharModal();
+  toast(id ? 'Empréstimo atualizado.' : 'Empréstimo salvo.');
+};
+
+/* ---------- Detalhe do empréstimo ---------- */
+window.abrirDetalhe = function (id) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const c = calcEmprestimo(e);
+  const p = pessoaPorId(e.pessoaId);
+
+  let parcelasHtml = '';
+  if (c.parcInfo.length) {
+    const primeiraAberta = c.parcInfo.find(x => x.restante > 0.005);
+    parcelasHtml = '<div class="subTitulo">Parcelas</div><table><thead><tr><th>#</th><th>Data</th><th class="dir">Valor</th><th class="dir">Falta</th><th class="dir"></th></tr></thead><tbody>' +
+      c.parcInfo.map(x => {
+        const st = x.status === 'paga' ? '<span class="chip quitado">Paga</span>'
+          : (x.status === 'vencida' ? '<span class="chip atrasado">Vencida</span>' : '<span class="chip aberto">A vencer</span>');
+        const jurosTxt = x.jurosAtraso > 0.005 ? '<br><small style="color:var(--vermelho)">+' + fmtBRL(x.jurosAtraso) + ' juros</small>' : '';
+        const podeConfirmar = primeiraAberta && x.num === primeiraAberta.num;
+        const botao = podeConfirmar
+          ? '<button class="btnConfirmar" onclick="event.stopPropagation();confirmarParcela(\'' + e.id + '\',' + x.num + ')">✓ Confirmar ' + fmtBRL(x.restante + x.jurosAtraso) + '</button>'
+          : st;
+        return '<tr><td>' + x.num + '</td><td>' + diaMes(x.data) + '</td>' +
+          '<td class="dir num">' + fmtBRL(x.valor) + jurosTxt + '</td>' +
+          '<td class="dir num">' + (x.restante > 0.005 ? fmtBRL(x.restante) : '—') + '</td>' +
+          '<td class="dir">' + botao + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<p style="font-size:12.5px;color:var(--tinta-2);margin-top:6px">O botão ✓ confirma o recebimento da parcela da vez (com os juros de atraso, se houver). Pagamentos parciais: use o campo abaixo.</p>';
+  }
+
+  const pagsHtml = (e.pagamentos || []).length === 0 ? '<div class="vazio">Nenhum pagamento registrado.</div>'
+    : '<ul class="listaPag">' + (e.pagamentos || []).slice().sort((a, b) => String(b.data).localeCompare(String(a.data)))
+      .map(pg => '<li><span class="cresce">' + dataBR(pg.data) + (pg.obs ? ' · ' + esc(pg.obs) : '') + '</span>' +
+        '<b class="num">' + fmtBRL(pg.valor) + '</b>' +
+        '<button class="btnMini" onclick="removerPagamento(\'' + e.id + '\',\'' + esc(pg.idp) + '\')">remover</button></li>').join('') + '</ul>';
+
+  const contatoAlt = p && definido(p.sdNome)
+    ? '<p class="infoLinha">📞 Contato alternativo: ' + esc(p.sdNome) + (definido(p.sdTelefone) ? ' (' + esc(p.sdTelefone) + ')' : '') + '</p>' : '';
+  const garantiaTxt = p && p.garantiaTem === 'sim' && definido(p.garantiaDesc)
+    ? '<p class="infoLinha">🛡️ Garantia: ' + esc(p.garantiaDesc) + '</p>' : '';
+
+  const html =
+    '<div class="resumoSaldo"><div class="rotulo">' + esc(nomePessoa(e.pessoaId)) + ' deve hoje</div>' +
+    '<div class="valor num">' + fmtBRL(c.saldo) + '</div>' +
+    '<div class="miudos"><span>Emprestado: <b class="num">' + fmtBRL(e.valor) + '</b></span>' +
+    '<span>Pago: <b class="num">' + fmtBRL(c.totalPago) + '</b></span>' +
+    '<span>Juros: <b class="num">' + fmtBRL(c.juros) + '</b></span></div></div>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + statusChip(c.status) +
+    (c.diasAtraso > 0 ? '<span style="color:var(--vermelho);font-size:13.5px;font-weight:600">' + c.diasAtraso + ' dia(s) de atraso</span>' : '') + '</div>' +
+    '<p class="infoLinha">Emprestado em ' + dataBR(e.dataEmprestimo) +
+    (definido(e.dataVencimento) ? ' · devolução prevista ' + dataBR(e.dataVencimento) : '') + ' · ' + descJuros(e) + '</p>' +
+    contatoAlt + garantiaTxt +
+    (definido(e.obs) ? '<p style="font-size:14px;margin-top:6px">📝 ' + esc(e.obs) + '</p>' : '') +
+    parcelasHtml +
+    '<div class="subTitulo">Pagamentos recebidos</div>' + pagsHtml +
+    '<div class="duasCol" style="margin-top:8px">' +
+    '<div><label>Valor recebido (R$)</label><input id="pgValor" type="text" inputmode="decimal"></div>' +
+    '<div><label>Data</label><input id="pgData" type="date" value="' + hojeStr() + '"></div></div>' +
+    '<button class="primario" style="width:100%;margin-top:12px" onclick="registrarPagamento(\'' + e.id + '\')">Registrar pagamento</button>' +
+    '<hr class="divisor">' +
+    '<div class="modalBotoes" style="margin-top:12px">' +
+    '<button class="suave" onclick="cobrarWhats(\'' + e.id + '\')">💬 Cobrar no WhatsApp</button>' +
+    '<button class="suave" onclick="copiarMensagem(\'' + e.id + '\')">📋 Copiar mensagem</button>' +
+    '<button class="suave" onclick="baixarExtrato(\'' + e.id + '\')">🖼️ Baixar extrato</button></div>' +
+    '<div class="modalBotoes" style="margin-top:10px">' +
+    '<button class="suave" onclick="formEmprestimo(\'' + e.id + '\')">Editar</button>' +
+    '<button class="perigo" onclick="excluirEmprestimo(\'' + e.id + '\')">Excluir</button></div>';
+  abrirModal('Detalhes do empréstimo', html);
+};
+
+window.confirmarParcela = function (id, numP) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const c = calcEmprestimo(e);
+  const info = c.parcInfo.find(x => x.num === numP);
+  if (!info || info.restante <= 0.005) return;
+  const jAt = info.jurosAtraso;
+  const total = info.restante + jAt;
+  const msg = 'Confirmar recebimento de ' + fmtBRL(total) + ' da parcela ' + numP +
+    (jAt > 0.005 ? ' (inclui ' + fmtBRL(jAt) + ' de juros de atraso)?' : '?');
+  if (!confirm(msg)) return;
+  const parcelas = (e.parcelas || []).map(p =>
+    (p.num === numP && jAt > 0.005)
+      ? Object.assign({}, p, { valor: num(p.valor) + jAt, jurosInc: num(p.jurosInc || 0) + jAt })
+      : p
+  );
+  const pags = (e.pagamentos || []).concat([{ idp: novoId(), data: hojeStr(), valor: total, obs: 'Parcela ' + numP }]);
+  salvarRegistro('Emprestimos', 'emprestimos', { id: e.id, parcelas, pagamentos: pags });
+  toast('Parcela ' + numP + ' confirmada: ' + fmtBRL(total));
+  abrirDetalhe(id);
+};
+
+window.registrarPagamento = function (id) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const v = num(document.getElementById('pgValor').value);
+  const d = document.getElementById('pgData').value;
+  if (v <= 0) return toast('Informe o valor recebido.', true);
+  if (!d) return toast('Informe a data do pagamento.', true);
+  const pags = (e.pagamentos || []).concat([{ idp: novoId(), data: d, valor: v }]);
+  salvarRegistro('Emprestimos', 'emprestimos', { id: e.id, pagamentos: pags });
+  toast('Pagamento de ' + fmtBRL(v) + ' registrado.');
+  abrirDetalhe(id);
+};
+window.removerPagamento = function (id, idp) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  if (!confirm('Remover este pagamento?')) return;
+  const pags = (e.pagamentos || []).filter(p => p.idp !== idp);
+  salvarRegistro('Emprestimos', 'emprestimos', { id: e.id, pagamentos: pags });
+  toast('Pagamento removido.');
+  abrirDetalhe(id);
+};
+window.excluirEmprestimo = function (id) {
+  if (!confirm('Excluir este empréstimo e todo o histórico dele?')) return;
+  excluirRegistroLocal('Emprestimos', 'emprestimos', id);
+  fecharModal();
+  toast('Empréstimo excluído.');
+};
+
+/* ---------- Cobrança / extrato ---------- */
+window.cobrarWhats = function (id) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const p = pessoaPorId(e.pessoaId);
+  const msg = gerarMensagem(e);
+  const url = p && definido(p.telefone)
+    ? 'https://wa.me/55' + String(p.telefone).replace(/\D/g, '') + '?text=' + encodeURIComponent(msg)
+    : 'https://wa.me/?text=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
+};
+window.copiarMensagem = function (id) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const msg = gerarMensagem(e);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(msg).then(() => toast('Mensagem copiada. É só colar no WhatsApp.'))
+      .catch(() => prompt('Copie a mensagem:', msg));
+  } else {
+    prompt('Copie a mensagem:', msg);
+  }
+};
+
+window.baixarExtrato = function (id) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const c = calcEmprestimo(e);
+  const nome = nomePessoa(e.pessoaId);
+  const linhas = gerarMensagem(e).split('\n').map(l => l.replace(/^\* /, '•  '));
+
+  const extras = [];
+  if (c.parcInfo.length) {
+    extras.push('');
+    extras.push('Cronograma de parcelas');
+    c.parcInfo.forEach(x => {
+      const st = x.status === 'paga' ? '✅ paga' : (x.status === 'vencida' ? '❌ vencida' : '⏳ a vencer');
+      extras.push('•  ' + x.num + 'ª  ' + dataBR(x.data) + '  —  ' + fmtBRL(x.valor) + '  (' + st + ')');
+    });
+  }
+  const todas = linhas.concat(extras);
+
+  const escala = 2, larg = 720, margem = 36, altLinha = 34;
+  const altTopo = 118, altRodape = 64;
+  const alt = altTopo + todas.length * altLinha + altRodape;
+
+  const cv = document.createElement('canvas');
+  cv.width = larg * escala; cv.height = alt * escala;
+  const cx = cv.getContext('2d');
+  cx.scale(escala, escala);
+
+  cx.fillStyle = '#FFFFFF'; cx.fillRect(0, 0, larg, alt);
+  cx.fillStyle = '#123B2A'; cx.fillRect(0, 0, larg, 84);
+  cx.fillStyle = '#FFFFFF';
+  cx.font = '700 22px -apple-system, Segoe UI, Roboto, Arial';
+  cx.fillText('Extrato do empréstimo', margem, 36);
+  cx.font = '400 15px -apple-system, Segoe UI, Roboto, Arial';
+  cx.fillStyle = '#CFE3D7';
+  cx.fillText('Emitido em ' + dataBR(hojeStr()) + (definido(estado.config.nome) ? ' · ' + estado.config.nome : ''), margem, 62);
+
+  let y = altTopo;
+  todas.forEach(l => {
+    if (l === '') { y += altLinha * 0.5; return; }
+    const titulo = (l === 'Dados do empréstimo' || l === 'Situação atual' || l === 'Cronograma de parcelas' || l.startsWith('👤'));
+    cx.font = (titulo ? '700 ' : '400 ') + (l.startsWith('👤') ? '19px' : '16px') + ' -apple-system, Segoe UI, Roboto, Arial';
+    cx.fillStyle = titulo ? '#123B2A' : '#1C2420';
+    cx.fillText(l, margem, y);
+    y += altLinha;
+  });
+
+  cx.strokeStyle = '#E3E7E1'; cx.beginPath(); cx.moveTo(margem, alt - 44); cx.lineTo(larg - margem, alt - 44); cx.stroke();
+  cx.font = '400 13px -apple-system, Segoe UI, Roboto, Arial';
+  cx.fillStyle = '#5A665F';
+  cx.fillText('Saldo devedor em ' + dataBR(hojeStr()) + ': ' + fmtBRL(c.saldo), margem, alt - 22);
+
+  cv.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'extrato-' + String(nome).toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + hojeStr() + '.png';
+    a.click();
+    toast('Extrato baixado. É só enviar a imagem.');
+  }, 'image/png');
+};
+
+/* ---------- Pessoas ---------- */
+function telaPessoas() {
+  const lista = ordenarPorNome(estado.pessoas, 'nome');
+  let html = '<div class="barraAcoes"><button class="primario" onclick="formPessoa()">+ Nova pessoa</button></div><div class="cartao">';
+  html += lista.length === 0 ? '<div class="vazio">Nenhuma pessoa cadastrada ainda.</div>'
+    : '<table><thead><tr><th>Nome</th><th>Celular</th><th class="dir">Deve hoje</th></tr></thead><tbody>' +
+      lista.map(p => {
+        const devido = estado.emprestimos.filter(e => e.pessoaId === p.id).reduce((s, e) => s + calcEmprestimo(e).saldo, 0);
+        const icones = (p.garantiaTem === 'sim' ? ' 🛡️' : '') + (definido(p.sdNome) ? ' 📞' : '');
+        return '<tr class="linhaClicavel" onclick="formPessoa(\'' + p.id + '\')"><td>' + esc(p.nome) + icones + '</td><td>' + esc(p.telefone || '—') + '</td>' +
+          '<td class="dir num">' + (devido > 0.005 ? '<b>' + fmtBRL(devido) + '</b>' : '—') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  html += '</div><p class="infoLinha">🛡️ tem garantia · 📞 tem contato alternativo</p>';
+  return html;
+}
+
+function camposGarantia(prefixo, tem, descricao) {
+  const idSel = prefixo + 'GarantiaTem', idCaixa = prefixo + 'CaixaGarantia', idDesc = prefixo + 'GarantiaDesc';
+  return '<label>Tem garantia?</label>' +
+    '<select id="' + idSel + '" onchange="alternarGarantia(\'' + idSel + '\',\'' + idCaixa + '\')">' +
+    '<option value="nao"' + (tem === 'sim' ? '' : ' selected') + '>Não</option>' +
+    '<option value="sim"' + (tem === 'sim' ? ' selected' : '') + '>Sim</option></select>' +
+    '<div class="caixaGarantia" id="' + idCaixa + '" style="display:' + (tem === 'sim' ? 'block' : 'none') + '">' +
+    '<label>Qual é a garantia?</label>' +
+    '<input id="' + idDesc + '" type="text" placeholder="Ex: moto Honda CG, celular, cheque…" value="' + esc(descricao || '') + '"></div>';
+}
+window.alternarGarantia = function (idSel, idCaixa) {
+  document.getElementById(idCaixa).style.display = document.getElementById(idSel).value === 'sim' ? 'block' : 'none';
+};
+
+window.formPessoa = function (id) {
+  const p = id ? pessoaPorId(id) : null;
+  const g = x => p ? esc(p[x] || '') : '';
+  const html =
+    '<label style="margin-top:0">Nome completo</label><input id="pNome" type="text" value="' + g('nome') + '">' +
+    '<div class="duasCol">' +
+    '<div><label>Celular / WhatsApp (com DDD)</label><input id="pFone" type="tel" inputmode="tel" value="' + g('telefone') + '"></div>' +
+    '<div><label>CPF</label><input id="pCpf" type="text" inputmode="numeric" value="' + g('cpf') + '"></div></div>' +
+    '<label>Endereço</label><input id="pEnd" type="text" value="' + g('endereco') + '">' +
+    camposGarantia('p', p ? p.garantiaTem : 'nao', p ? p.garantiaDesc : '') +
+    '<hr class="divisor">' +
+    '<div class="subTitulo" style="margin:10px 0 0">Segundo devedor (contato alternativo)</div>' +
+    '<p style="font-size:13px;color:var(--tinta-2)">Quem você pode acionar se a pessoa não responder. Opcional.</p>' +
+    '<label>Nome</label><input id="pSdNome" type="text" value="' + g('sdNome') + '">' +
+    '<div class="duasCol">' +
+    '<div><label>Celular (com DDD)</label><input id="pSdFone" type="tel" inputmode="tel" value="' + g('sdTelefone') + '"></div>' +
+    '<div><label>CPF</label><input id="pSdCpf" type="text" inputmode="numeric" value="' + g('sdCpf') + '"></div></div>' +
+    '<label>Endereço</label><input id="pSdEnd" type="text" value="' + g('sdEndereco') + '">' +
+    camposGarantia('pSd', p ? p.sdGarantiaTem : 'nao', p ? p.sdGarantiaDesc : '') +
+    '<hr class="divisor">' +
+    '<label>Observações</label><textarea id="pObs" rows="2">' + g('obs') + '</textarea>' +
+    '<div class="modalBotoes">' +
+    (p ? '<button class="perigo" onclick="excluirPessoa(\'' + p.id + '\')">Excluir</button>' : '<button class="suave" onclick="fecharModal()">Cancelar</button>') +
+    '<button class="primario" onclick="gravarPessoa(\'' + (p ? p.id : '') + '\')">Salvar</button></div>';
+  abrirModal(id ? 'Editar pessoa' : 'Nova pessoa', html);
+};
+window.gravarPessoa = function (id) {
+  const val = x => document.getElementById(x).value.trim();
+  const nome = val('pNome');
+  if (!nome) return toast('Informe o nome.', true);
+  salvarRegistro('Pessoas', 'pessoas', {
+    id: id || novoId(), nome,
+    telefone: val('pFone'), cpf: val('pCpf'), endereco: val('pEnd'),
+    garantiaTem: document.getElementById('pGarantiaTem').value,
+    garantiaDesc: val('pGarantiaDesc'),
+    sdNome: val('pSdNome'), sdTelefone: val('pSdFone'), sdCpf: val('pSdCpf'), sdEndereco: val('pSdEnd'),
+    sdGarantiaTem: document.getElementById('pSdGarantiaTem').value,
+    sdGarantiaDesc: val('pSdGarantiaDesc'),
+    obs: val('pObs')
+  });
+  fecharModal(); toast('Pessoa salva.');
+};
+window.excluirPessoa = function (id) {
+  const tem = estado.emprestimos.some(e => e.pessoaId === id);
+  if (tem) return toast('Essa pessoa tem empréstimos registrados. Exclua-os primeiro.', true);
+  if (!confirm('Excluir esta pessoa e todos os dados dela?')) return;
+  excluirRegistroLocal('Pessoas', 'pessoas', id);
+  fecharModal(); toast('Pessoa excluída.');
+};
+
+/* ---------- Config ---------- */
+function telaConfig() {
+  return '<div class="cartao">' +
+    '<label style="margin-top:0">Seu nome ou apelido (aparece no menu e no extrato)</label>' +
+    '<input id="cfgNome" type="text" value="' + esc(estado.config.nome || '') + '">' +
+    '<button class="primario" style="margin-top:12px" onclick="gravarConfig()">Salvar</button></div>' +
+    '<div class="cartao"><div class="subTitulo" style="margin-top:0">Backup</div>' +
+    '<p style="font-size:14px;color:var(--tinta-2);margin-bottom:12px">Exporte uma cópia de segurança de todos os dados, ou restaure de um arquivo exportado antes.</p>' +
+    '<div class="barraAcoes" style="margin-bottom:0">' +
+    '<button class="suave" onclick="exportarBackup()">⬇ Exportar backup</button>' +
+    '<button class="suave" onclick="document.getElementById(\'arqBackup\').click()">⬆ Restaurar backup</button>' +
+    '<input type="file" id="arqBackup" accept=".json" style="display:none" onchange="importarBackup(this)"></div></div>' +
+    '<div class="cartao"><div class="subTitulo" style="margin-top:0">Conexão</div>' +
+    '<p style="font-size:14px;color:var(--tinta-2)">' + (temApi
+      ? 'Conectado à planilha do Google. Os dados são salvos automaticamente.'
+      : 'Modo local: os dados estão salvos só neste aparelho. Conecte à planilha editando o API_URL no index.html.') + '</p></div>';
+}
+window.gravarConfig = function () {
+  estado.config.nome = document.getElementById('cfgNome').value.trim();
+  estado.config.id = 'config';
+  salvarConfig(); toast('Configurações salvas.');
+};
+window.exportarBackup = function () {
+  const blob = new Blob([JSON.stringify(estado, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'backup-emprestimos-' + hojeStr() + '.json';
+  a.click();
+  toast('Backup exportado.');
+};
+window.importarBackup = function (input) {
+  const arq = input.files && input.files[0];
+  if (!arq) return;
+  const leitor = new FileReader();
+  leitor.onload = () => {
+    try {
+      const d = JSON.parse(leitor.result);
+      if (!d || !Array.isArray(d.pessoas) || !Array.isArray(d.emprestimos)) throw new Error('formato inválido');
+      if (!confirm('Restaurar este backup? Os dados atuais serão SUBSTITUÍDOS.')) return;
+      estado = { pessoas: d.pessoas, emprestimos: d.emprestimos, config: d.config || estado.config };
+      salvarLocal(); renderizarAbaAtual();
+      enviar('Emprestimos', 'salvar_tudo', { dados: { pessoas: estado.pessoas, emprestimos: estado.emprestimos, config: [estado.config] } });
+      toast('Backup restaurado.');
+    } catch (e) { toast('Arquivo de backup inválido.', true); }
+  };
+  leitor.readAsText(arq);
+  input.value = '';
+};
+
+/* ---------- pendências (chip clicável) ---------- */
+document.getElementById('chipSync').addEventListener('click', () => {
+  if (!temApi) return abrirModal('Modo local', '<p style="font-size:14.5px">O sistema está funcionando sem conexão com a planilha (API_URL ainda não configurado). Tudo fica salvo neste aparelho.</p>');
+  if (pendentes.length === 0) return abrirModal('Sincronização', '<p style="font-size:14.5px">Tudo sincronizado com a planilha. ✅</p>');
+  const linhas = pendentes.map(p => '<tr><td>' + esc(p.tabela) + '</td><td>' + esc(p.acao) + '</td><td style="font-size:12.5px">' + esc(p.motivo) + '<br><small>' + esc(p.quando) + '</small></td></tr>').join('');
+  abrirModal('Pendências de sincronização',
+    '<table><thead><tr><th>Tabela</th><th>Ação</th><th>Motivo</th></tr></thead><tbody>' + linhas + '</tbody></table>' +
+    '<button class="primario" style="width:100%;margin-top:14px" onclick="reenviarPendentes().then(fecharModal)">Tentar enviar agora</button>');
+});
+
+/* =====================================================================
+   MENU + LOGIN + INICIALIZAÇÃO
+===================================================================== */
+document.getElementById('btnMenu').addEventListener('click', () => {
+  document.body.classList.toggle('menuFechado');
+  localStorage.setItem(CHAVE_MENU, document.body.classList.contains('menuFechado') ? '1' : '0');
+});
+document.getElementById('fundoMenu').addEventListener('click', () => document.body.classList.add('menuFechado'));
+document.querySelectorAll('.navBtn').forEach(b => b.addEventListener('click', () => irPara(b.dataset.aba)));
+
+function tentarEntrar() {
+  if (document.getElementById('campoSenha').value !== SENHA) return toast('Senha incorreta.', true);
+  sessionStorage.setItem('emp_logado', '1');
+  iniciarApp();
+}
+document.getElementById('btnEntrar').addEventListener('click', tentarEntrar);
+document.getElementById('campoSenha').addEventListener('keydown', e => { if (e.key === 'Enter') tentarEntrar(); });
+
+function iniciarApp() {
+  document.getElementById('telaLogin').style.display = 'none';
+  document.getElementById('app').classList.add('logado');
+  if (localStorage.getItem(CHAVE_MENU) === '1' || window.innerWidth <= 760) document.body.classList.add('menuFechado');
+  irPara('dashboard');
+  atualizarChip();
+  reenviarPendentes().then(() => puxarTudo(true));
+}
+
+temApi = /^https:\/\//.test(API_URL);
+carregarLocal();
+if (sessionStorage.getItem('emp_logado') === '1') iniciarApp();
+
+setInterval(() => { reenviarPendentes().then(() => puxarTudo(true)); }, 3 * 60 * 1000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && (erroUltimoPull || pendentes.length > 0)) {
+    reenviarPendentes().then(() => puxarTudo(true));
+  }
+});
+</script>
+</body>
+</html>
