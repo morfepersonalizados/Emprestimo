@@ -1013,6 +1013,8 @@ window.abrirDetalhe = function (id) {
     '<hr class="divisor">' +
     '<div class="modalBotoes" style="margin-top:12px">' +
     '<button class="suave" onclick="cobrarWhats(\'' + e.id + '\')">💬 Cobrar no WhatsApp</button>' +
+    '<button class="suave" onclick="avisoAutomaticoPrimeiro(\'' + e.id + '\')">🤖 Aviso automático</button></div>' +
+    '<div class="modalBotoes" style="margin-top:10px">' +
     '<button class="suave" onclick="copiarMensagem(\'' + e.id + '\')">📋 Copiar mensagem</button>' +
     '<button class="suave" onclick="baixarExtrato(\'' + e.id + '\')">🖼️ Baixar extrato</button></div>' +
     (p && definido(p.sdTelefone) ? '<div class="modalBotoes" style="margin-top:10px">' +
@@ -1125,6 +1127,23 @@ window.excluirEmprestimo = function (id) {
 };
 
 /* ---------- Cobrança / extrato ---------- */
+function gerarMensagemAutomaticaPrimeiro(e) {
+  const nome = nomePessoa(e.pessoaId);
+  return 'Olá, boa tarde.\n' +
+    'Esta é uma mensagem automática 🤖, referente a pendência de uma dívida em nome de: ' + nome + '.\n' +
+    'Caso vá efetuar o pagamento hoje ou vá haver atraso, digite 1 que um de nossos colaboradores irá entrar em contato para resolver seu débito.';
+}
+window.avisoAutomaticoPrimeiro = function (id) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const p = pessoaPorId(e.pessoaId);
+  const msg = gerarMensagemAutomaticaPrimeiro(e);
+  const url = p && definido(p.telefone)
+    ? 'https://wa.me/55' + soDigitos(p.telefone) + '?text=' + encodeURIComponent(msg)
+    : 'https://wa.me/?text=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
+};
+
 function gerarMensagemSegundoDevedor(e) {
   const nome = nomePessoa(e.pessoaId);
   return 'Olá, boa tarde.\n' +
