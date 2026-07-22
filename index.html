@@ -155,7 +155,15 @@
     #modalFundo{align-items:center; padding:20px}
     #modalCaixa{border-radius:16px}
   }
-  #modalTitulo{font-size:18px; color:var(--verde-900); margin-bottom:6px}
+  #modalTopo{
+    position:sticky; top:-20px; margin:-8px -4px 6px; padding:10px 4px; background:var(--branco);
+    display:flex; align-items:center; gap:10px; z-index:5; border-bottom:1px solid var(--linha);
+  }
+  #btnVoltarModal{
+    background:var(--verde-100); color:var(--verde-900); border:0; border-radius:10px;
+    min-width:44px; min-height:44px; font-size:20px; font-weight:700; cursor:pointer; flex-shrink:0;
+  }
+  #modalTitulo{font-size:18px; color:var(--verde-900)}
   .modalBotoes{display:flex; gap:10px; margin-top:20px; flex-wrap:wrap}
   .modalBotoes button{flex:1; min-width:130px}
 
@@ -228,7 +236,10 @@
 
 <div id="modalFundo">
   <div id="modalCaixa">
-    <h3 id="modalTitulo"></h3>
+    <div id="modalTopo">
+      <button id="btnVoltarModal" aria-label="Voltar">←</button>
+      <h3 id="modalTitulo"></h3>
+    </div>
     <div id="modalCorpo"></div>
   </div>
 </div>
@@ -279,6 +290,17 @@ const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', 
 const definido = v => v !== undefined && v !== null && v !== '';
 const novoId = () => 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const soDigitos = v => String(v == null ? '' : v).replace(/\D/g, '');
+function fmtFone(v) {
+  const d = soDigitos(v).slice(0, 11);
+  if (!d) return '';
+  if (d.length <= 2) return '(' + d;
+  const ddd = d.slice(0, 2), resto = d.slice(2);
+  if (resto.length <= 4) return '(' + ddd + ') ' + resto;
+  if (resto.length <= 8) return '(' + ddd + ') ' + resto.slice(0, 4) + '-' + resto.slice(4);
+  return '(' + ddd + ') ' + resto.slice(0, 5) + '-' + resto.slice(5);
+}
+window.mascaraFone = function (campo) { campo.value = fmtFone(campo.value); };
 function hojeStr() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -369,8 +391,15 @@ function calcEmprestimo(e) {
       juros = somaJAtraso + somaJInc;
     } else {
       saldo = somaRest;
-      juros = (tipo === 'fixo' ? principal * taxa : 0) + somaJInc;
+      let jBase = 0;
+      if (tipo === 'fixo') jBase = principal * taxa;
+      if (tipo === 'total') jBase = Math.max(num(e.valorTotal) - principal, 0);
+      juros = jBase + somaJInc;
     }
+  } else if (tipo === 'total') {
+    const vt = num(e.valorTotal) || principal;
+    juros = Math.max(vt - principal, 0);
+    saldo = vt - totalPago;
   } else if (tipo === 'fixo') {
     juros = principal * taxa;
     saldo = principal + juros - totalPago;
@@ -413,6 +442,7 @@ function descJuros(e) {
   if (t === 'fixo')   return num(e.jurosTaxa) + '% fixo sobre o valor';
   if (t === 'mensal') return num(e.jurosTaxa) + '% ao mês sobre o saldo';
   if (t === 'atraso') return num(e.jurosTaxa) + '% ao mês sobre parcela/valor em atraso';
+  if (t === 'total')  return 'Combinado: ' + fmtBRL(e.valorTotal) + ' no total';
   return t;
 }
 
@@ -556,12 +586,31 @@ function salvarConfig() {
 /* =====================================================================
    MODAL + BUSCA DE PESSOA
 ===================================================================== */
+let modalNaHistoria = false;
 function abrirModal(titulo, html) {
   document.getElementById('modalTitulo').textContent = titulo;
   document.getElementById('modalCorpo').innerHTML = html;
   document.getElementById('modalFundo').classList.add('aberto');
+  document.getElementById('modalCaixa').scrollTop = 0;
+  if (!modalNaHistoria && window.history && history.pushState) {
+    history.pushState({ modal: 1 }, '');
+    modalNaHistoria = true;
+  }
 }
-function fecharModal() { document.getElementById('modalFundo').classList.remove('aberto'); }
+function fecharModal(viaBotaoFisico) {
+  document.getElementById('modalFundo').classList.remove('aberto');
+  if (modalNaHistoria && !viaBotaoFisico && window.history) {
+    modalNaHistoria = false;
+    history.back();
+  } else {
+    modalNaHistoria = false;
+  }
+}
+window.addEventListener('popstate', () => {
+  if (document.getElementById('modalFundo').classList.contains('aberto')) fecharModal(true);
+  else modalNaHistoria = false;
+});
+document.getElementById('btnVoltarModal').addEventListener('click', () => fecharModal());
 document.getElementById('modalFundo').addEventListener('click', e => { if (e.target.id === 'modalFundo') fecharModal(); });
 
 function montarBuscaPessoa(idEscolhida) {
@@ -779,12 +828,16 @@ window.formEmprestimo = function (id) {
     '</div>' +
     '<label>Data prevista de devolução (opcional)</label><input id="fVenc" type="date" value="' + esc(e && e.dataVencimento || '') + '">' +
     '<div class="duasCol">' +
-    '<div><label>Tipo de juros</label><select id="fJurosTipo">' +
+    '<div><label>Tipo de juros</label><select id="fJurosTipo" onchange="alternarJuros()">' +
       opJuros('nenhum', 'Sem juros', e) + opJuros('fixo', '% fixo sobre o valor', e) +
       opJuros('mensal', '% ao mês sobre o saldo', e) + opJuros('atraso', '% ao mês só no atraso', e) +
+      opJuros('total', 'Valor total combinado', e) +
     '</select></div>' +
-    '<div><label>Taxa (%)</label><input id="fTaxa" type="text" inputmode="decimal" value="' + (e ? esc(e.jurosTaxa || '') : '') + '"></div>' +
+    '<div id="fCaixaTaxa" style="display:' + ((e && (e.jurosTipo === 'fixo' || e.jurosTipo === 'mensal' || e.jurosTipo === 'atraso')) ? 'block' : 'none') + '"><label>Taxa (%)</label><input id="fTaxa" type="text" inputmode="decimal" value="' + (e ? esc(e.jurosTaxa || '') : '') + '"></div>' +
     '</div>' +
+    '<div id="fCaixaTotal" style="display:' + ((e && e.jurosTipo === 'total') ? 'block' : 'none') + '"><label>Valor total a receber no final (R$)</label>' +
+    '<input id="fValorTotal" type="text" inputmode="decimal" placeholder="Ex: emprestou 800, combinou 1800" value="' + (e ? esc(e.valorTotal || '') : '') + '">' +
+    '<p style="font-size:13px;color:var(--tinta-2);margin-top:4px">A diferença vira os juros, e as parcelas são divididas por esse total automaticamente.</p></div>' +
     '<label>Parcelar? (opcional)</label>' +
     '<div class="duasCol">' +
     '<div><input id="fNumParc" type="text" inputmode="numeric" placeholder="Nº de parcelas" value="' + (e && e.parcelas ? e.parcelas.length : '') + '"></div>' +
@@ -801,6 +854,11 @@ function opJuros(v, txt, e) {
   const sel = e && (e.jurosTipo || 'nenhum') === v ? ' selected' : (!e && v === 'nenhum' ? ' selected' : '');
   return '<option value="' + v + '"' + sel + '>' + txt + '</option>';
 }
+window.alternarJuros = function () {
+  const t = document.getElementById('fJurosTipo').value;
+  document.getElementById('fCaixaTaxa').style.display = (t === 'fixo' || t === 'mensal' || t === 'atraso') ? 'block' : 'none';
+  document.getElementById('fCaixaTotal').style.display = (t === 'total') ? 'block' : 'none';
+};
 
 window.gravarEmprestimo = function (id) {
   const pessoaId = document.getElementById('pessoaEscolhida').value;
@@ -812,13 +870,18 @@ window.gravarEmprestimo = function (id) {
 
   const jurosTipo = document.getElementById('fJurosTipo').value;
   const taxa = num(document.getElementById('fTaxa').value);
-  if (jurosTipo !== 'nenhum' && taxa <= 0) return toast('Informe a taxa de juros (%).', true);
+  const valorTotal = num(document.getElementById('fValorTotal').value);
+  if (jurosTipo === 'total') {
+    if (valorTotal <= 0) return toast('Informe o valor total combinado.', true);
+    if (valorTotal < valor) return toast('O valor total não pode ser menor que o emprestado.', true);
+  } else if (jurosTipo !== 'nenhum' && taxa <= 0) return toast('Informe a taxa de juros (%).', true);
 
   const reg = {
     id: id || novoId(),
     pessoaId, valor, dataEmprestimo: data,
     dataVencimento: document.getElementById('fVenc').value || '',
     jurosTipo, jurosTaxa: taxa,
+    valorTotal: jurosTipo === 'total' ? valorTotal : '',
     obs: document.getElementById('fObs').value.trim()
   };
   if (!id) reg.pagamentos = [];
@@ -826,7 +889,7 @@ window.gravarEmprestimo = function (id) {
   const nParc = Math.floor(num(document.getElementById('fNumParc').value));
   const prim = document.getElementById('fPrimParc').value;
   if (nParc > 0 && prim) {
-    const base = (jurosTipo === 'fixo') ? valor * (1 + taxa / 100) : valor;
+    const base = (jurosTipo === 'total') ? valorTotal : ((jurosTipo === 'fixo') ? valor * (1 + taxa / 100) : valor);
     const vParc = Math.round((base / nParc) * 100) / 100;
     reg.parcelas = [];
     for (let i = 0; i < nParc; i++) {
@@ -877,7 +940,7 @@ window.abrirDetalhe = function (id) {
         '<button class="btnMini" onclick="removerPagamento(\'' + e.id + '\',\'' + esc(pg.idp) + '\')">remover</button></li>').join('') + '</ul>';
 
   const contatoAlt = p && definido(p.sdNome)
-    ? '<p class="infoLinha">📞 Contato alternativo: ' + esc(p.sdNome) + (definido(p.sdTelefone) ? ' (' + esc(p.sdTelefone) + ')' : '') + '</p>' : '';
+    ? '<p class="infoLinha">📞 Contato alternativo: ' + esc(p.sdNome) + (definido(p.sdTelefone) ? ' — ' + esc(fmtFone(p.sdTelefone)) : '') + '</p>' : '';
   const garantiaTxt = p && p.garantiaTem === 'sim' && definido(p.garantiaDesc)
     ? '<p class="infoLinha">🛡️ Garantia: ' + esc(p.garantiaDesc) + '</p>' : '';
 
@@ -1052,7 +1115,7 @@ function telaPessoas() {
       lista.map(p => {
         const devido = estado.emprestimos.filter(e => e.pessoaId === p.id).reduce((s, e) => s + calcEmprestimo(e).saldo, 0);
         const icones = (p.garantiaTem === 'sim' ? ' 🛡️' : '') + (definido(p.sdNome) ? ' 📞' : '');
-        return '<tr class="linhaClicavel" onclick="formPessoa(\'' + p.id + '\')"><td>' + esc(p.nome) + icones + '</td><td>' + esc(p.telefone || '—') + '</td>' +
+        return '<tr class="linhaClicavel" onclick="formPessoa(\'' + p.id + '\')"><td>' + esc(p.nome) + icones + '</td><td>' + esc(fmtFone(p.telefone) || '—') + '</td>' +
           '<td class="dir num">' + (devido > 0.005 ? '<b>' + fmtBRL(devido) + '</b>' : '—') + '</td></tr>';
       }).join('') + '</tbody></table>';
   html += '</div><p class="infoLinha">🛡️ tem garantia · 📞 tem contato alternativo</p>';
@@ -1079,7 +1142,7 @@ window.formPessoa = function (id) {
   const html =
     '<label style="margin-top:0">Nome completo</label><input id="pNome" type="text" value="' + g('nome') + '">' +
     '<div class="duasCol">' +
-    '<div><label>Celular / WhatsApp (com DDD)</label><input id="pFone" type="tel" inputmode="tel" value="' + g('telefone') + '"></div>' +
+    '<div><label>Celular / WhatsApp (com DDD)</label><input id="pFone" type="tel" inputmode="tel" placeholder="(92) 99999-0000" oninput="mascaraFone(this)" value="' + esc(fmtFone(p ? p.telefone : '')) + '"></div>' +
     '<div><label>CPF</label><input id="pCpf" type="text" inputmode="numeric" value="' + g('cpf') + '"></div></div>' +
     '<label>Endereço</label><input id="pEnd" type="text" value="' + g('endereco') + '">' +
     camposGarantia('p', p ? p.garantiaTem : 'nao', p ? p.garantiaDesc : '') +
@@ -1088,7 +1151,7 @@ window.formPessoa = function (id) {
     '<p style="font-size:13px;color:var(--tinta-2)">Quem você pode acionar se a pessoa não responder. Opcional.</p>' +
     '<label>Nome</label><input id="pSdNome" type="text" value="' + g('sdNome') + '">' +
     '<div class="duasCol">' +
-    '<div><label>Celular (com DDD)</label><input id="pSdFone" type="tel" inputmode="tel" value="' + g('sdTelefone') + '"></div>' +
+    '<div><label>Celular (com DDD)</label><input id="pSdFone" type="tel" inputmode="tel" placeholder="(92) 99999-0000" oninput="mascaraFone(this)" value="' + esc(fmtFone(p ? p.sdTelefone : '')) + '"></div>' +
     '<div><label>CPF</label><input id="pSdCpf" type="text" inputmode="numeric" value="' + g('sdCpf') + '"></div></div>' +
     '<label>Endereço</label><input id="pSdEnd" type="text" value="' + g('sdEndereco') + '">' +
     camposGarantia('pSd', p ? p.sdGarantiaTem : 'nao', p ? p.sdGarantiaDesc : '') +
@@ -1105,10 +1168,10 @@ window.gravarPessoa = function (id) {
   if (!nome) return toast('Informe o nome.', true);
   salvarRegistro('Pessoas', 'pessoas', {
     id: id || novoId(), nome,
-    telefone: val('pFone'), cpf: val('pCpf'), endereco: val('pEnd'),
+    telefone: fmtFone(val('pFone')), cpf: val('pCpf'), endereco: val('pEnd'),
     garantiaTem: document.getElementById('pGarantiaTem').value,
     garantiaDesc: val('pGarantiaDesc'),
-    sdNome: val('pSdNome'), sdTelefone: val('pSdFone'), sdCpf: val('pSdCpf'), sdEndereco: val('pSdEnd'),
+    sdNome: val('pSdNome'), sdTelefone: fmtFone(val('pSdFone')), sdCpf: val('pSdCpf'), sdEndereco: val('pSdEnd'),
     sdGarantiaTem: document.getElementById('pSdGarantiaTem').value,
     sdGarantiaDesc: val('pSdGarantiaDesc'),
     obs: val('pObs')
