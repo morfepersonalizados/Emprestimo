@@ -352,6 +352,12 @@ function ledgerSaldo(principal, taxa, inicio, pags, hoje) {
   return { saldo, juros };
 }
 
+function cfgAtraso(e) {
+  if (num(e.atrasoTaxa) > 0) return { taxa: num(e.atrasoTaxa) / 100, porDia: e.atrasoPeriodo !== 'mes', novo: true };
+  if ((e.jurosTipo || '') === 'atraso' && num(e.jurosTaxa) > 0) return { taxa: num(e.jurosTaxa) / 100, porDia: false, novo: false };
+  return null;
+}
+
 function calcEmprestimo(e) {
   const principal = num(e.valor);
   const taxa = num(e.jurosTaxa) / 100;
@@ -362,6 +368,7 @@ function calcEmprestimo(e) {
   const parcelas = Array.isArray(e.parcelas) ? e.parcelas : [];
   let saldo = 0, juros = 0;
   const parcInfo = [];
+  const cfg = cfgAtraso(e);
 
   if (parcelas.length) {
     let sobra = totalPago;
@@ -370,8 +377,9 @@ function calcEmprestimo(e) {
       const pago = Math.min(v, sobra); sobra -= pago;
       const restante = v - pago;
       let jAtraso = 0;
-      if (tipo === 'atraso' && restante > 0.005 && String(p.data) < hoje) {
-        jAtraso = restante * taxa * (diasEntre(p.data, hoje) / 30);
+      if (cfg && restante > 0.005 && String(p.data) < hoje) {
+        const dias = diasEntre(p.data, hoje);
+        jAtraso = restante * cfg.taxa * (cfg.porDia ? dias : dias / 30);
       }
       parcInfo.push({
         num: p.num, data: p.data, valor: v, pago, restante, jurosAtraso: jAtraso,
@@ -385,16 +393,13 @@ function calcEmprestimo(e) {
 
     if (tipo === 'mensal') {
       const r = ledgerSaldo(principal, taxa, e.dataEmprestimo, pags, hoje);
-      saldo = r.saldo; juros = r.juros;
-    } else if (tipo === 'atraso') {
-      saldo = somaRest + somaJAtraso;
-      juros = somaJAtraso + somaJInc;
+      saldo = r.saldo + somaJAtraso; juros = r.juros + somaJAtraso + somaJInc;
     } else {
-      saldo = somaRest;
       let jBase = 0;
       if (tipo === 'fixo') jBase = principal * taxa;
       if (tipo === 'total') jBase = Math.max(num(e.valorTotal) - principal, 0);
-      juros = jBase + somaJInc;
+      saldo = somaRest + somaJAtraso;
+      juros = jBase + somaJAtraso + somaJInc;
     }
   } else if (tipo === 'total') {
     const vt = num(e.valorTotal) || principal;
@@ -409,6 +414,12 @@ function calcEmprestimo(e) {
     saldo = r.saldo; juros = r.juros;
   } else {
     saldo = principal - totalPago;
+  }
+
+  if (!parcelas.length && cfg && cfg.novo && definido(e.dataVencimento) && hoje > e.dataVencimento && saldo > 0.005) {
+    const dias = diasEntre(e.dataVencimento, hoje);
+    const j = saldo * cfg.taxa * (cfg.porDia ? dias : dias / 30);
+    saldo += j; juros += j;
   }
 
   const quitado = saldo <= 0.005;
@@ -438,12 +449,13 @@ function statusChip(st) {
 }
 function descJuros(e) {
   const t = e.jurosTipo || 'nenhum';
-  if (t === 'nenhum') return 'Sem juros';
-  if (t === 'fixo')   return num(e.jurosTaxa) + '% fixo sobre o valor';
-  if (t === 'mensal') return num(e.jurosTaxa) + '% ao mês sobre o saldo';
-  if (t === 'atraso') return num(e.jurosTaxa) + '% ao mês sobre parcela/valor em atraso';
-  if (t === 'total')  return 'Combinado: ' + fmtBRL(e.valorTotal) + ' no total';
-  return t;
+  let s = 'Sem juros';
+  if (t === 'fixo')   s = num(e.jurosTaxa) + '% fixo sobre o valor';
+  if (t === 'mensal') s = num(e.jurosTaxa) + '% ao mês sobre o saldo';
+  if (t === 'atraso') s = num(e.jurosTaxa) + '% ao mês sobre parcela/valor em atraso';
+  if (t === 'total')  s = 'Combinado: ' + fmtBRL(e.valorTotal) + ' no total';
+  if (num(e.atrasoTaxa) > 0) s += ' · atraso: ' + num(e.atrasoTaxa) + '% ao ' + (e.atrasoPeriodo === 'mes' ? 'mês' : 'DIA');
+  return s;
 }
 
 /* =====================================================================
@@ -838,6 +850,14 @@ window.formEmprestimo = function (id) {
     '<div id="fCaixaTotal" style="display:' + ((e && e.jurosTipo === 'total') ? 'block' : 'none') + '"><label>Valor total a receber no final (R$)</label>' +
     '<input id="fValorTotal" type="text" inputmode="decimal" placeholder="Ex: emprestou 800, combinou 1800" value="' + (e ? esc(e.valorTotal || '') : '') + '">' +
     '<p style="font-size:13px;color:var(--tinta-2);margin-top:4px">A diferença vira os juros, e as parcelas são divididas por esse total automaticamente.</p></div>' +
+    '<label>Juros por atraso (opcional — vale para qualquer tipo acima)</label>' +
+    '<div class="duasCol">' +
+    '<div><input id="fAtrasoTaxa" type="text" inputmode="decimal" placeholder="Taxa (ex: 10)" value="' + (e ? esc(e.atrasoTaxa || '') : '') + '"></div>' +
+    '<div><select id="fAtrasoPeriodo">' +
+      '<option value="dia"' + ((e && e.atrasoPeriodo === 'mes') ? '' : ' selected') + '>% ao DIA de atraso</option>' +
+      '<option value="mes"' + ((e && e.atrasoPeriodo === 'mes') ? ' selected' : '') + '>% ao MÊS de atraso</option>' +
+    '</select></div></div>' +
+    '<p style="font-size:13px;color:var(--tinta-2);margin-top:4px">Corre automaticamente sobre a parcela/valor vencido, enquanto não for pago.</p>' +
     '<label>Parcelar? (opcional)</label>' +
     '<div class="duasCol">' +
     '<div><input id="fNumParc" type="text" inputmode="numeric" placeholder="Nº de parcelas" value="' + (e && e.parcelas ? e.parcelas.length : '') + '"></div>' +
@@ -882,6 +902,8 @@ window.gravarEmprestimo = function (id) {
     dataVencimento: document.getElementById('fVenc').value || '',
     jurosTipo, jurosTaxa: taxa,
     valorTotal: jurosTipo === 'total' ? valorTotal : '',
+    atrasoTaxa: num(document.getElementById('fAtrasoTaxa').value) > 0 ? num(document.getElementById('fAtrasoTaxa').value) : '',
+    atrasoPeriodo: document.getElementById('fAtrasoPeriodo').value,
     obs: document.getElementById('fObs').value.trim()
   };
   if (!id) reg.pagamentos = [];
@@ -926,7 +948,8 @@ window.abrirDetalhe = function (id) {
           ? '<button class="btnConfirmar" onclick="event.stopPropagation();confirmarParcela(\'' + e.id + '\',' + x.num + ')">✓ Confirmar ' + fmtBRL(x.restante + x.jurosAtraso) + '</button>'
           : st;
         return '<tr><td>' + x.num + '</td><td>' + diaMes(x.data) + '</td>' +
-          '<td class="dir num">' + fmtBRL(x.valor) + jurosTxt + '</td>' +
+          '<td class="dir num">' + fmtBRL(x.valor) +
+          ' <button class="btnMini" style="padding:2px 4px;min-height:auto" title="Editar valor" onclick="event.stopPropagation();editarParcela(\'' + e.id + '\',' + x.num + ')">✏️</button>' + jurosTxt + '</td>' +
           '<td class="dir num">' + (x.restante > 0.005 ? fmtBRL(x.restante) : '—') + '</td>' +
           '<td class="dir">' + botao + '</td></tr>';
       }).join('') + '</tbody></table>' +
@@ -971,6 +994,21 @@ window.abrirDetalhe = function (id) {
     '<button class="suave" onclick="formEmprestimo(\'' + e.id + '\')">Editar</button>' +
     '<button class="perigo" onclick="excluirEmprestimo(\'' + e.id + '\')">Excluir</button></div>';
   abrirModal('Detalhes do empréstimo', html);
+};
+
+window.editarParcela = function (id, numP) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e || !Array.isArray(e.parcelas)) return;
+  const p = e.parcelas.find(x => x.num === numP);
+  if (!p) return;
+  const resp = prompt('Novo valor da parcela ' + numP + ' (R$):', String(p.valor).replace('.', ','));
+  if (resp === null) return;
+  const v = num(resp);
+  if (v <= 0) return toast('Valor inválido.', true);
+  const parcelas = e.parcelas.map(x => x.num === numP ? Object.assign({}, x, { valor: v }) : x);
+  salvarRegistro('Emprestimos', 'emprestimos', { id: e.id, parcelas });
+  toast('Parcela ' + numP + ' atualizada para ' + fmtBRL(v) + '.');
+  abrirDetalhe(id);
 };
 
 window.confirmarParcela = function (id, numP) {
