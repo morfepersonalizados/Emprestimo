@@ -353,9 +353,28 @@ function ledgerSaldo(principal, taxa, inicio, pags, hoje) {
 }
 
 function cfgAtraso(e) {
-  if (num(e.atrasoTaxa) > 0) return { taxa: num(e.atrasoTaxa) / 100, porDia: e.atrasoPeriodo !== 'mes', novo: true };
-  if ((e.jurosTipo || '') === 'atraso' && num(e.jurosTaxa) > 0) return { taxa: num(e.jurosTaxa) / 100, porDia: false, novo: false };
+  if (num(e.atrasoTaxa) > 0) return { taxa: num(e.atrasoTaxa) / 100, taxaPct: num(e.atrasoTaxa), porDia: e.atrasoPeriodo !== 'mes', novo: true };
+  if ((e.jurosTipo || '') === 'atraso' && num(e.jurosTaxa) > 0) return { taxa: num(e.jurosTaxa) / 100, taxaPct: num(e.jurosTaxa), porDia: false, novo: false };
   return null;
+}
+function somaDias(iso, n) {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+// Valor de uma dívida após d dias de atraso: composto ao dia (cada dia soma em cima
+// do valor já acumulado do dia anterior), ou pró-rata simples ao mês.
+function valorComJurosAtraso(valorBase, cfg, dias) {
+  if (dias <= 0) return valorBase;
+  return cfg.porDia ? valorBase * Math.pow(1 + cfg.taxa, dias) : valorBase * (1 + cfg.taxa * (dias / 30));
+}
+// Lista dia a dia (para o detalhe "ver dia a dia" na tela)
+function listaDiasAtraso(valorBase, cfg, dataBase, diasTotal) {
+  const linhas = [];
+  for (let d = 1; d <= diasTotal; d++) {
+    linhas.push({ dia: d, data: somaDias(dataBase, d), valor: valorComJurosAtraso(valorBase, cfg, d) });
+  }
+  return linhas;
 }
 
 function calcEmprestimo(e) {
@@ -379,7 +398,7 @@ function calcEmprestimo(e) {
       let jAtraso = 0;
       if (cfg && restante > 0.005 && String(p.data) < hoje) {
         const dias = diasEntre(p.data, hoje);
-        jAtraso = restante * cfg.taxa * (cfg.porDia ? dias : dias / 30);
+        jAtraso = valorComJurosAtraso(restante, cfg, dias) - restante;
       }
       parcInfo.push({
         num: p.num, data: p.data, valor: v, pago, restante, jurosAtraso: jAtraso,
@@ -418,8 +437,8 @@ function calcEmprestimo(e) {
 
   if (!parcelas.length && cfg && cfg.novo && definido(e.dataVencimento) && hoje > e.dataVencimento && saldo > 0.005) {
     const dias = diasEntre(e.dataVencimento, hoje);
-    const j = saldo * cfg.taxa * (cfg.porDia ? dias : dias / 30);
-    saldo += j; juros += j;
+    const novoSaldo = valorComJurosAtraso(saldo, cfg, dias);
+    juros += (novoSaldo - saldo); saldo = novoSaldo;
   }
 
   const quitado = saldo <= 0.005;
@@ -942,18 +961,24 @@ window.abrirDetalhe = function (id) {
       c.parcInfo.map(x => {
         const st = x.status === 'paga' ? '<span class="chip quitado">Paga</span>'
           : (x.status === 'vencida' ? '<span class="chip atrasado">Vencida</span>' : '<span class="chip aberto">A vencer</span>');
-        const jurosTxt = x.jurosAtraso > 0.005 ? '<br><small style="color:var(--vermelho)">+' + fmtBRL(x.jurosAtraso) + ' juros</small>' : '';
         const podeConfirmar = primeiraAberta && x.num === primeiraAberta.num;
+        const totalHoje = x.restante + x.jurosAtraso;
         const botao = podeConfirmar
-          ? '<button class="btnConfirmar" onclick="event.stopPropagation();confirmarParcela(\'' + e.id + '\',' + x.num + ')">✓ Confirmar ' + fmtBRL(x.restante + x.jurosAtraso) + '</button>'
+          ? '<button class="btnConfirmar" onclick="event.stopPropagation();confirmarParcela(\'' + e.id + '\',' + x.num + ')">✓ Confirmar ' + fmtBRL(totalHoje) + '</button>'
           : st;
+        const faltaCel = x.restante > 0.005
+          ? '<b>' + fmtBRL(totalHoje) + '</b>' + (x.jurosAtraso > 0.005
+              ? '<br><small style="color:var(--vermelho)">(+' + fmtBRL(x.jurosAtraso) + ' juros)</small>' +
+                '<br><button class="btnMini" style="color:var(--verde-700);padding:2px 0;min-height:auto" onclick="event.stopPropagation();abrirDetalheAtraso(\'' + e.id + '\',' + x.num + ')">Ver dia a dia ▸</button>'
+              : '')
+          : '—';
         return '<tr><td>' + x.num + '</td><td>' + diaMes(x.data) + '</td>' +
           '<td class="dir num">' + fmtBRL(x.valor) +
-          ' <button class="btnMini" style="padding:2px 4px;min-height:auto" title="Editar valor" onclick="event.stopPropagation();editarParcela(\'' + e.id + '\',' + x.num + ')">✏️</button>' + jurosTxt + '</td>' +
-          '<td class="dir num">' + (x.restante > 0.005 ? fmtBRL(x.restante) : '—') + '</td>' +
+          ' <button class="btnMini" style="padding:2px 4px;min-height:auto" title="Editar valor" onclick="event.stopPropagation();editarParcela(\'' + e.id + '\',' + x.num + ')">✏️</button></td>' +
+          '<td class="dir num">' + faltaCel + '</td>' +
           '<td class="dir">' + botao + '</td></tr>';
       }).join('') + '</tbody></table>' +
-      '<p style="font-size:12.5px;color:var(--tinta-2);margin-top:6px">O botão ✓ confirma o recebimento da parcela da vez (com os juros de atraso, se houver). Pagamentos parciais: use o campo abaixo.</p>';
+      '<p style="font-size:12.5px;color:var(--tinta-2);margin-top:6px">A coluna "Falta" já inclui os juros de atraso somados até hoje. O botão ✓ confirma o recebimento da parcela da vez. Pagamentos parciais: use o campo abaixo.</p>';
   }
 
   const pagsHtml = (e.pagamentos || []).length === 0 ? '<div class="vazio">Nenhum pagamento registrado.</div>'
@@ -990,6 +1015,8 @@ window.abrirDetalhe = function (id) {
     '<button class="suave" onclick="cobrarWhats(\'' + e.id + '\')">💬 Cobrar no WhatsApp</button>' +
     '<button class="suave" onclick="copiarMensagem(\'' + e.id + '\')">📋 Copiar mensagem</button>' +
     '<button class="suave" onclick="baixarExtrato(\'' + e.id + '\')">🖼️ Baixar extrato</button></div>' +
+    (p && definido(p.sdTelefone) ? '<div class="modalBotoes" style="margin-top:10px">' +
+      '<button class="suave" onclick="avisarSegundoDevedor(\'' + e.id + '\')">📣 Avisar segundo devedor</button></div>' : '') +
     '<div class="modalBotoes" style="margin-top:10px">' +
     '<button class="suave" onclick="formEmprestimo(\'' + e.id + '\')">Editar</button>' +
     '<button class="perigo" onclick="excluirEmprestimo(\'' + e.id + '\')">Excluir</button></div>';
@@ -997,6 +1024,31 @@ window.abrirDetalhe = function (id) {
 };
 
 function fmtEdicao(v) { return (Number(v) || 0).toFixed(2).replace('.', ','); }
+
+window.abrirDetalheAtraso = function (id, numP) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const c = calcEmprestimo(e);
+  const info = c.parcInfo.find(x => x.num === numP);
+  const cfg = cfgAtraso(e);
+  if (!info || !cfg || info.jurosAtraso <= 0.005) return;
+  const dias = diasEntre(info.data, hojeStr());
+  const linhas = listaDiasAtraso(info.restante, cfg, info.data, dias);
+  const linhasHtml = linhas.map(l =>
+    '<tr><td>' + l.dia + 'º dia</td><td>' + dataBR(l.data) + '</td><td class="dir num">' + fmtBRL(l.valor) + '</td></tr>'
+  ).join('');
+  const totalHoje = info.restante + info.jurosAtraso;
+  const html =
+    '<p class="infoLinha" style="margin-top:0">Parcela ' + numP + ' de ' + esc(nomePessoa(e.pessoaId)) +
+    ' — venceu em ' + dataBR(info.data) + ', ' + dias + ' dia(s) atrás.</p>' +
+    '<p class="infoLinha">Valor original em atraso: <b class="num">' + fmtBRL(info.restante) + '</b> · juros de ' +
+    cfg.taxaPct + '% ao ' + (cfg.porDia ? 'DIA (composto — cada dia soma em cima do valor já acumulado)' : 'mês') + '</p>' +
+    '<table><thead><tr><th>Dia de atraso</th><th>Data</th><th class="dir">Valor devido naquele dia</th></tr></thead><tbody>' +
+    linhasHtml + '</tbody></table>' +
+    '<div class="resumoSaldo" style="margin-top:14px"><div class="rotulo">Total a pagar hoje</div><div class="valor num">' + fmtBRL(totalHoje) + '</div></div>' +
+    '<div class="modalBotoes"><button class="primario" style="width:100%" onclick="abrirDetalhe(\'' + id + '\')">← Voltar para o empréstimo</button></div>';
+  abrirModal('Dia a dia do atraso', html);
+};
 
 window.editarParcela = function (id, numP) {
   const e = estado.emprestimos.find(x => x.id === id);
@@ -1073,6 +1125,22 @@ window.excluirEmprestimo = function (id) {
 };
 
 /* ---------- Cobrança / extrato ---------- */
+function gerarMensagemSegundoDevedor(e) {
+  const nome = nomePessoa(e.pessoaId);
+  return 'Olá, boa tarde.\n' +
+    'Esta é uma mensagem automática, referente a pendência de uma dívida em nome de: ' + nome + '.\n' +
+    'Por favor, se você for a(o) responsável do(a) devedor(a): digite 1 que um de nossos colaboradores já entrará em contato para explicar a pendência.';
+}
+window.avisarSegundoDevedor = function (id) {
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
+  const p = pessoaPorId(e.pessoaId);
+  if (!p || !definido(p.sdTelefone)) return toast('Essa pessoa não tem segundo devedor com celular cadastrado.', true);
+  const msg = gerarMensagemSegundoDevedor(e);
+  const url = 'https://wa.me/55' + soDigitos(p.sdTelefone) + '?text=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
+};
+
 window.cobrarWhats = function (id) {
   const e = estado.emprestimos.find(x => x.id === id);
   if (!e) return;
