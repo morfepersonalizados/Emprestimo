@@ -996,15 +996,26 @@ window.abrirDetalhe = function (id) {
   abrirModal('Detalhes do empréstimo', html);
 };
 
+function fmtEdicao(v) { return (Number(v) || 0).toFixed(2).replace('.', ','); }
+
 window.editarParcela = function (id, numP) {
   const e = estado.emprestimos.find(x => x.id === id);
   if (!e || !Array.isArray(e.parcelas)) return;
   const p = e.parcelas.find(x => x.num === numP);
   if (!p) return;
-  const resp = prompt('Novo valor da parcela ' + numP + ' (R$):', String(p.valor).replace('.', ','));
-  if (resp === null) return;
-  const v = num(resp);
-  if (v <= 0) return toast('Valor inválido.', true);
+  const html =
+    '<label style="margin-top:0">Novo valor da parcela ' + numP + ' (R$)</label>' +
+    '<input id="fEditParcela" type="text" inputmode="decimal" value="' + esc(fmtEdicao(p.valor)) + '">' +
+    '<div class="modalBotoes">' +
+    '<button class="suave" onclick="abrirDetalhe(\'' + id + '\')">Cancelar</button>' +
+    '<button class="primario" onclick="salvarValorParcela(\'' + id + '\',' + numP + ')">Salvar</button></div>';
+  abrirModal('Editar parcela', html);
+};
+window.salvarValorParcela = function (id, numP) {
+  const v = num(document.getElementById('fEditParcela').value);
+  if (v <= 0) return toast('Informe um valor válido.', true);
+  const e = estado.emprestimos.find(x => x.id === id);
+  if (!e) return;
   const parcelas = e.parcelas.map(x => x.num === numP ? Object.assign({}, x, { valor: v }) : x);
   salvarRegistro('Emprestimos', 'emprestimos', { id: e.id, parcelas });
   toast('Parcela ' + numP + ' atualizada para ' + fmtBRL(v) + '.');
